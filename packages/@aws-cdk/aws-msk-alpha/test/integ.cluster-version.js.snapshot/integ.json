@@ -1,0 +1,13 @@
+{
+  "enableLookups": true,
+  "version": "38.0.1",
+  "testCases": {
+    "KafkaVersionIntegTest/DefaultTest": {
+      "stacks": [
+        "KafkaVersionTestStack"
+      ],
+      "assertionStack": "KafkaVersionIntegTest/DefaultTest/DeployAssert",
+      "assertionStackName": "KafkaVersionIntegTestDefaultTestDeployAssertD6628743"
+    }
+  }
+}

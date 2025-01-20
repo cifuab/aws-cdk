@@ -3,26 +3,37 @@ import * as process from 'process';
 import * as fs from 'fs-extra';
 import { shell, escape } from './os';
 import { CDKBuildOptions, CompilerOverrides } from './package-info';
+import { Timers } from './timer';
 
-export async function lintCurrentPackage(options: CDKBuildOptions, compilers: CompilerOverrides & { fix?: boolean } = {}): Promise<void> {
+export async function lintCurrentPackage(
+  options: CDKBuildOptions,
+  timers: Timers,
+  compilers: CompilerOverrides & { fix?: boolean } = {}): Promise<void> {
   const env = options.env;
   const fixOption = compilers.fix ? ['--fix'] : [];
 
   if (!options.eslint?.disable) {
+    let eslintPath = compilers.eslint;
+    if (!eslintPath) {
+      const eslintPj = require.resolve('eslint/package.json');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      eslintPath = path.resolve(eslintPj, '..', require(eslintPj).bin.eslint);
+    }
+
     await shell([
-      compilers.eslint || require.resolve('eslint/bin/eslint'),
+      eslintPath,
       '.',
       '--ext=.ts',
       `--resolve-plugins-relative-to=${__dirname}`,
       ...fixOption,
-    ], { env });
+    ], { timers, env });
   }
 
   if (!options.pkglint?.disable) {
     await shell([
       'pkglint',
       ...fixOption,
-    ], { env });
+    ], { timers, env });
   }
 
   if (await fs.pathExists('README.md')) {
@@ -34,8 +45,8 @@ export async function lintCurrentPackage(options: CDKBuildOptions, compilers: Co
       '--config', path.resolve(__dirname, '..', 'config', 'markdownlint.json'),
       ...fixOption,
       'README.md',
-    ]);
+    ], { timers });
   }
 
-  await shell([path.join(__dirname, '..', 'bin', 'cdk-awslint')], { env });
+  await shell([path.join(__dirname, '..', 'bin', 'cdk-awslint')], { timers, env });
 }

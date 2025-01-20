@@ -1,127 +1,128 @@
-import { Lambda } from 'aws-sdk';
+import { UpdateFunctionCodeCommand, waitUntilFunctionUpdatedV2 } from '@aws-sdk/client-lambda';
 import * as setup from './hotswap-test-setup';
+import { HotswapMode } from '../../../lib/api/hotswap/common';
+import { mockLambdaClient } from '../../util/mock-sdk';
+import { silentTest } from '../../util/silent';
 
-let mockUpdateLambdaCode: (params: Lambda.Types.UpdateFunctionCodeRequest) => Lambda.Types.FunctionConfiguration;
-let mockTagResource: (params: Lambda.Types.TagResourceRequest) => {};
-let mockUntagResource: (params: Lambda.Types.UntagResourceRequest) => {};
+jest.mock('@aws-sdk/client-lambda', () => {
+  const original = jest.requireActual('@aws-sdk/client-lambda');
+
+  return {
+    ...original,
+    waitUntilFunctionUpdatedV2: jest.fn(),
+  };
+});
+
 let hotswapMockSdkProvider: setup.HotswapMockSdkProvider;
-let mockMakeRequest: (operation: string, params: any) => AWS.Request<any, AWS.AWSError>;
 
 beforeEach(() => {
+  jest.restoreAllMocks();
   hotswapMockSdkProvider = setup.setupHotswapTests();
-  mockUpdateLambdaCode = jest.fn().mockReturnValue({
+  mockLambdaClient.on(UpdateFunctionCodeCommand).resolves({
     PackageType: 'Image',
   });
-  mockTagResource = jest.fn();
-  mockUntagResource = jest.fn();
-  mockMakeRequest = jest.fn().mockReturnValue({
-    promise: () => Promise.resolve({}),
-    response: {},
-    addListeners: () => {},
-  });
-  hotswapMockSdkProvider.stubLambda({
-    updateFunctionCode: mockUpdateLambdaCode,
-    tagResource: mockTagResource,
-    untagResource: mockUntagResource,
-  }, {
-    makeRequest: mockMakeRequest,
-  });
 });
 
-test('calls the updateLambdaCode() API when it receives only a code difference in a Lambda function', async () => {
-  // GIVEN
-  setup.setCurrentCfnStackTemplate({
-    Resources: {
-      Func: {
-        Type: 'AWS::Lambda::Function',
-        Properties: {
-          Code: {
-            ImageUri: 'current-image',
+describe.each([HotswapMode.FALL_BACK, HotswapMode.HOTSWAP_ONLY])('%p mode', (hotswapMode) => {
+  silentTest(
+    'calls the updateLambdaCode() API when it receives only a code difference in a Lambda function',
+    async () => {
+      // GIVEN
+      setup.setCurrentCfnStackTemplate({
+        Resources: {
+          Func: {
+            Type: 'AWS::Lambda::Function',
+            Properties: {
+              Code: {
+                ImageUri: 'current-image',
+              },
+              FunctionName: 'my-function',
+            },
+            Metadata: {
+              'aws:asset:path': 'old-path',
+            },
           },
-          FunctionName: 'my-function',
         },
-        Metadata: {
-          'aws:asset:path': 'old-path',
+      });
+      const cdkStackArtifact = setup.cdkStackArtifactOf({
+        template: {
+          Resources: {
+            Func: {
+              Type: 'AWS::Lambda::Function',
+              Properties: {
+                Code: {
+                  ImageUri: 'new-image',
+                },
+                FunctionName: 'my-function',
+              },
+              Metadata: {
+                'aws:asset:path': 'new-path',
+              },
+            },
+          },
         },
-      },
+      });
+
+      // WHEN
+      const deployStackResult = await hotswapMockSdkProvider.tryHotswapDeployment(hotswapMode, cdkStackArtifact);
+
+      // THEN
+      expect(deployStackResult).not.toBeUndefined();
+      expect(mockLambdaClient).toHaveReceivedCommandWith(UpdateFunctionCodeCommand, {
+        FunctionName: 'my-function',
+        ImageUri: 'new-image',
+      });
     },
-  });
-  const cdkStackArtifact = setup.cdkStackArtifactOf({
-    template: {
+  );
+
+  silentTest('calls the waiter with a delay of 5', async () => {
+    // GIVEN
+    setup.setCurrentCfnStackTemplate({
       Resources: {
         Func: {
           Type: 'AWS::Lambda::Function',
           Properties: {
             Code: {
-              ImageUri: 'new-image',
+              ImageUri: 'current-image',
             },
             FunctionName: 'my-function',
           },
           Metadata: {
-            'aws:asset:path': 'new-path',
+            'aws:asset:path': 'old-path',
           },
         },
       },
-    },
-  });
-
-  // WHEN
-  const deployStackResult = await hotswapMockSdkProvider.tryHotswapDeployment(cdkStackArtifact);
-
-  // THEN
-  expect(deployStackResult).not.toBeUndefined();
-  expect(mockUpdateLambdaCode).toHaveBeenCalledWith({
-    FunctionName: 'my-function',
-    ImageUri: 'new-image',
-  });
-});
-
-test('calls the getFunction() API with a delay of 5', async () => {
-  // GIVEN
-  setup.setCurrentCfnStackTemplate({
-    Resources: {
-      Func: {
-        Type: 'AWS::Lambda::Function',
-        Properties: {
-          Code: {
-            ImageUri: 'current-image',
-          },
-          FunctionName: 'my-function',
-        },
-        Metadata: {
-          'aws:asset:path': 'old-path',
-        },
-      },
-    },
-  });
-  const cdkStackArtifact = setup.cdkStackArtifactOf({
-    template: {
-      Resources: {
-        Func: {
-          Type: 'AWS::Lambda::Function',
-          Properties: {
-            Code: {
-              ImageUri: 'new-image',
+    });
+    const cdkStackArtifact = setup.cdkStackArtifactOf({
+      template: {
+        Resources: {
+          Func: {
+            Type: 'AWS::Lambda::Function',
+            Properties: {
+              Code: {
+                ImageUri: 'new-image',
+              },
+              FunctionName: 'my-function',
             },
-            FunctionName: 'my-function',
-          },
-          Metadata: {
-            'aws:asset:path': 'new-path',
+            Metadata: {
+              'aws:asset:path': 'new-path',
+            },
           },
         },
       },
-    },
+    });
+
+    // WHEN
+    await hotswapMockSdkProvider.tryHotswapDeployment(hotswapMode, cdkStackArtifact);
+
+    // THEN
+    expect(waitUntilFunctionUpdatedV2).toHaveBeenCalledWith(
+      expect.objectContaining({
+        minDelay: 5,
+        maxDelay: 5,
+        maxWaitTime: 5 * 60,
+      }),
+      { FunctionName: 'my-function' },
+    );
   });
-
-  // WHEN
-  await hotswapMockSdkProvider.tryHotswapDeployment(cdkStackArtifact);
-
-  // THEN
-  expect(mockMakeRequest).toHaveBeenCalledWith('getFunction', { FunctionName: 'my-function' });
-  expect(hotswapMockSdkProvider.getLambdaApiWaiters()).toEqual(expect.objectContaining({
-    updateFunctionPropertiesToFinish: expect.objectContaining({
-      name: 'UpdateFunctionPropertiesToFinish',
-      delay: 5,
-    }),
-  }));
 });

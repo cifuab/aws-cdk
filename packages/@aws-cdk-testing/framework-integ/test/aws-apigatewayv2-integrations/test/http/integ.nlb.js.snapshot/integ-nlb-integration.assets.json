@@ -1,0 +1,19 @@
+{
+  "version": "36.0.0",
+  "files": {
+    "0bc0237a216225de4f1a4941417a6df200d0633a5e73d4cd5b402dfe6609c99e": {
+      "source": {
+        "path": "integ-nlb-integration.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "current_account-current_region": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "0bc0237a216225de4f1a4941417a6df200d0633a5e73d4cd5b402dfe6609c99e.json",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

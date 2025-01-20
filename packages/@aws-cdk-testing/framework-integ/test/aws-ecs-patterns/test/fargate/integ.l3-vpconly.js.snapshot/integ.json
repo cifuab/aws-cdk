@@ -1,0 +1,12 @@
+{
+  "version": "35.0.0",
+  "testCases": {
+    "vpcOnlyFargateTest/DefaultTest": {
+      "stacks": [
+        "aws-ecs-integ-l3-vpconly"
+      ],
+      "assertionStack": "vpcOnlyFargateTest/DefaultTest/DeployAssert",
+      "assertionStackName": "vpcOnlyFargateTestDefaultTestDeployAssertEB558D64"
+    }
+  }
+}

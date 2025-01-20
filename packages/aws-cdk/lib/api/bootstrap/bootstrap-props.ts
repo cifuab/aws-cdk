@@ -1,19 +1,34 @@
-import { Tag } from '../../cdk-toolkit';
+import { BootstrapSource } from './bootstrap-environment';
+import { Tag } from '../../tags';
+import { StringWithoutPlaceholders } from '../util/placeholders';
 
 export const BUCKET_NAME_OUTPUT = 'BucketName';
-export const REPOSITORY_NAME_OUTPUT = 'RepositoryName';
+export const REPOSITORY_NAME_OUTPUT = 'ImageRepositoryName';
 export const BUCKET_DOMAIN_NAME_OUTPUT = 'BucketDomainName';
 export const BOOTSTRAP_VERSION_OUTPUT = 'BootstrapVersion';
 export const BOOTSTRAP_VERSION_RESOURCE = 'CdkBootstrapVersion';
+export const BOOTSTRAP_VARIANT_PARAMETER = 'BootstrapVariant';
+
+/**
+ * The assumed vendor of a template in case it is not set
+ */
+export const DEFAULT_BOOTSTRAP_VARIANT = 'AWS CDK: Default Resources';
 
 /**
  * Options for the bootstrapEnvironment operation(s)
  */
 export interface BootstrapEnvironmentOptions {
   readonly toolkitStackName?: string;
-  readonly roleArn?: string;
+  readonly roleArn?: StringWithoutPlaceholders;
   readonly parameters?: BootstrappingParameters;
   readonly force?: boolean;
+
+  /**
+   * The source of the bootstrap stack
+   *
+   * @default - modern v2-style bootstrapping
+   */
+  readonly source?: BootstrapSource;
 
   /**
    * Whether to execute the changeset or only create it and leave it in review.
@@ -34,6 +49,15 @@ export interface BootstrapEnvironmentOptions {
    * @default true
    */
   readonly terminationProtection?: boolean;
+
+  /**
+   * Use previous values for unspecified parameters
+   *
+   * If not set, all parameters must be specified for every deployment.
+   *
+   * @default true
+   */
+  usePreviousParameters?: boolean;
 }
 
 /**
@@ -81,7 +105,7 @@ export interface BootstrappingParameters {
   /**
    * The ARNs of the IAM managed policies that should be attached to the role performing CloudFormation deployments.
    * In most cases, this will be the AdministratorAccess policy.
-   * At least one policy is required if {@link trustedAccounts} were passed.
+   * At least one policy is required if `trustedAccounts` were passed.
    *
    * @default - the role will have no policies attached
    */
@@ -101,4 +125,17 @@ export interface BootstrappingParameters {
    */
   readonly publicAccessBlockConfiguration?: boolean;
 
+  /**
+   * Flag for using the default permissions boundary for bootstrapping
+   *
+   * @default - No value, optional argument
+   */
+  readonly examplePermissionsBoundary?: boolean;
+
+  /**
+   * Name for the customer's custom permissions boundary for bootstrapping
+   *
+   * @default - No value, optional argument
+   */
+  readonly customPermissionsBoundary?: string;
 }

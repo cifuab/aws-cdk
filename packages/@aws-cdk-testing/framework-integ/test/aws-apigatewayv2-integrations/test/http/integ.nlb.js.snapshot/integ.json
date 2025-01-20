@@ -1,0 +1,12 @@
+{
+  "version": "36.0.0",
+  "testCases": {
+    "integ-nlb-integration-test/DefaultTest": {
+      "stacks": [
+        "integ-nlb-integration"
+      ],
+      "assertionStack": "integ-nlb-integration-test/DefaultTest/DeployAssert",
+      "assertionStackName": "integnlbintegrationtestDefaultTestDeployAssert2961C4CC"
+    }
+  }
+}

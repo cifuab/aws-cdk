@@ -69,7 +69,7 @@ export async function listFiles(dirName: string, predicate: (x: File) => boolean
     }
 
     return ret;
-  } catch (e) {
+  } catch (e: any) {
     if (e.code === 'ENOENT') { return []; }
     throw e;
   }
@@ -104,6 +104,8 @@ export function packageCompiler(compilers: CompilerOverrides, options?: CDKBuild
       args.push('--compress-assembly');
     }
     if (options?.stripDeprecated) {
+      // This package is not published to npm so the linter rule is invalid
+      // eslint-disable-next-line @cdklabs/no-invalid-path
       args.push(`--strip-deprecated ${path.join(__dirname, '..', '..', '..', '..', 'deprecated_apis.txt')}`);
     }
     return [compilers.jsii || require.resolve('jsii/bin/jsii'), ...args];
@@ -118,7 +120,6 @@ export function packageCompiler(compilers: CompilerOverrides, options?: CDKBuild
 export function genScript(): string | undefined {
   return currentPackageJson().scripts?.gen;
 }
-
 
 export interface CDKBuildOptions {
   /**
@@ -142,14 +143,14 @@ export interface CDKBuildOptions {
   };
 
   /**
-   * An optional command (formatted as a list of strings) to run before building
+   * Optional commands (formatted as a list of strings, which will be joined together with the && operator) to run before building
    *
    * (Typically a code generator)
    */
   pre?: string[];
 
   /**
-   * An optional command (formatted as a list of strings) to run after building
+   * Optional commands (formatted as a list of strings, which will be joined together with the && operator) to run after building
    *
    * (Schema generator for example)
    */
@@ -190,8 +191,13 @@ export interface CDKPackageOptions {
    */
   shrinkWrap?: boolean;
 
+  /**
+   * Optional commands (formatted as a list of strings, which will be joined together with the && operator) to run before packaging
+   */
+  pre?: string[];
+
   /*
-   * An optional command (formatted as a list of strings) to run after packaging
+   * Optional commands (formatted as a list of strings, which will be joined together with the && operator) to run after packaging
   */
   post?: string[];
 
@@ -199,6 +205,12 @@ export interface CDKPackageOptions {
    * Should this package be bundled. (and if so, how)
    */
   bundle?: Omit<BundleProps, 'packageDir'>;
+
+  /**
+   * Also package private packages for local usage.
+   * @default false
+   */
+  private?: boolean;
 }
 
 /**

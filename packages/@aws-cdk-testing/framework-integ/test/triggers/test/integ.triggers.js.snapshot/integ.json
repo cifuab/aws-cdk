@@ -1,0 +1,13 @@
+{
+  "version": "38.0.1",
+  "testCases": {
+    "TriggerTest/DefaultTest": {
+      "stacks": [
+        "MyStack"
+      ],
+      "diffAssets": true,
+      "assertionStack": "TriggerTest/DefaultTest/DeployAssert",
+      "assertionStackName": "TriggerTestDefaultTestDeployAssert61636546"
+    }
+  }
+}

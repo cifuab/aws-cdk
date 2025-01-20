@@ -1,0 +1,19 @@
+{
+  "version": "35.0.0",
+  "files": {
+    "94955769443efa4e8c60b0a684013cbab6d11c679c9a68fe1095bf778240fe45": {
+      "source": {
+        "path": "aws-ecs-integ-multi-nlb-healthchecks.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "current_account-current_region": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "94955769443efa4e8c60b0a684013cbab6d11c679c9a68fe1095bf778240fe45.json",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

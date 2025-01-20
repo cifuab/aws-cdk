@@ -1,8 +1,28 @@
+import * as cxapi from '@aws-cdk/cx-api';
 import { SSMPARAM_NO_INVALIDATE } from '@aws-cdk/cx-api';
-import { CloudFormation } from 'aws-sdk';
+import {
+  ChangeSetStatus,
+  type DescribeChangeSetCommandOutput,
+  type Parameter,
+  type ResourceIdentifierSummary,
+  type ResourceToImport,
+  type Stack,
+  type Tag,
+} from '@aws-sdk/client-cloudformation';
+import { AssetManifest, FileManifestEntry } from 'cdk-assets';
+import { StackStatus } from './cloudformation/stack-status';
+import { makeBodyParameter, TemplateBodyParameter } from './template-body-parameter';
 import { debug } from '../../logging';
 import { deserializeStructure } from '../../serialize';
-import { StackStatus } from './cloudformation/stack-status';
+import { ToolkitError } from '../../toolkit/error';
+import { AssetManifestBuilder } from '../../util/asset-manifest-builder';
+import { formatErrorMessage } from '../../util/error';
+import type { ICloudFormationClient, SdkProvider } from '../aws-auth';
+import type { Deployments } from '../deployments';
+
+export type ResourcesToImport = ResourceToImport[];
+export type ResourceIdentifierSummaries = ResourceIdentifierSummary[];
+export type ResourceIdentifierProperties = Record<string, string>;
 
 export type Template = {
   Parameters?: Record<string, TemplateParameter>;
@@ -16,10 +36,6 @@ interface TemplateParameter {
   [key: string]: any;
 }
 
-export type ResourceIdentifierProperties = CloudFormation.ResourceIdentifierProperties;
-export type ResourceIdentifierSummaries = CloudFormation.ResourceIdentifierSummaries;
-export type ResourcesToImport = CloudFormation.ResourcesToImport;
-
 /**
  * Represents an (existing) Stack in CloudFormation
  *
@@ -28,13 +44,15 @@ export type ResourcesToImport = CloudFormation.ResourcesToImport;
  */
 export class CloudFormationStack {
   public static async lookup(
-    cfn: CloudFormation, stackName: string, retrieveProcessedTemplate: boolean = false,
+    cfn: ICloudFormationClient,
+    stackName: string,
+    retrieveProcessedTemplate: boolean = false,
   ): Promise<CloudFormationStack> {
     try {
-      const response = await cfn.describeStacks({ StackName: stackName }).promise();
+      const response = await cfn.describeStacks({ StackName: stackName });
       return new CloudFormationStack(cfn, stackName, response.Stacks && response.Stacks[0], retrieveProcessedTemplate);
-    } catch (e) {
-      if (e.code === 'ValidationError' && e.message === `Stack with id ${stackName} does not exist`) {
+    } catch (e: any) {
+      if (e.name === 'ValidationError' && formatErrorMessage(e) === `Stack with id ${stackName} does not exist`) {
         return new CloudFormationStack(cfn, stackName, undefined);
       }
       throw e;
@@ -46,24 +64,25 @@ export class CloudFormationStack {
    *
    * It's a little silly that it needs arguments to do that, but there we go.
    */
-  public static doesNotExist(cfn: CloudFormation, stackName: string) {
+  public static doesNotExist(cfn: ICloudFormationClient, stackName: string) {
     return new CloudFormationStack(cfn, stackName);
   }
 
   /**
    * From static information (for testing)
    */
-  public static fromStaticInformation(cfn: CloudFormation, stackName: string, stack: CloudFormation.Stack) {
+  public static fromStaticInformation(cfn: ICloudFormationClient, stackName: string, stack: Stack) {
     return new CloudFormationStack(cfn, stackName, stack);
   }
 
   private _template: any;
 
   protected constructor(
-    private readonly cfn: CloudFormation, public readonly stackName: string, private readonly stack?: CloudFormation.Stack,
+    private readonly cfn: ICloudFormationClient,
+    public readonly stackName: string,
+    private readonly stack?: Stack,
     private readonly retrieveProcessedTemplate: boolean = false,
-  ) {
-  }
+  ) {}
 
   /**
    * Retrieve the stack's deployed template
@@ -80,7 +99,7 @@ export class CloudFormationStack {
       const response = await this.cfn.getTemplate({
         StackName: this.stackName,
         TemplateStage: this.retrieveProcessedTemplate ? 'Processed' : 'Original',
-      }).promise();
+      });
       this._template = (response.TemplateBody && deserializeStructure(response.TemplateBody)) || {};
     }
     return this._template;
@@ -109,9 +128,11 @@ export class CloudFormationStack {
    * Empty object if the stack doesn't exist
    */
   public get outputs(): Record<string, string> {
-    if (!this.exists) { return {}; }
+    if (!this.exists) {
+      return {};
+    }
     const result: { [name: string]: string } = {};
-    (this.stack!.Outputs || []).forEach(output => {
+    (this.stack!.Outputs || []).forEach((output) => {
       result[output.OutputKey!] = output.OutputValue!;
     });
     return result;
@@ -132,10 +153,19 @@ export class CloudFormationStack {
   /**
    * The stack's current tags
    *
-   * Empty list of the stack does not exist
+   * Empty list if the stack does not exist
    */
-  public get tags(): CloudFormation.Tags {
+  public get tags(): Tag[] {
     return this.stack?.Tags || [];
+  }
+
+  /**
+   * SNS Topic ARNs that will receive stack events.
+   *
+   * Empty list if the stack does not exist
+   */
+  public get notificationArns(): string[] {
+    return this.stack?.NotificationARNs ?? [];
   }
 
   /**
@@ -153,10 +183,12 @@ export class CloudFormationStack {
    * Empty object if the stack does not exist.
    */
   public get parameters(): Record<string, string> {
-    if (!this.exists) { return {}; }
+    if (!this.exists) {
+      return {};
+    }
     const ret: Record<string, string> = {};
     for (const param of this.stack!.Parameters ?? []) {
-      ret[param.ParameterKey!] = param.ParameterValue!;
+      ret[param.ParameterKey!] = param.ResolvedValue ?? param.ParameterValue!;
     }
     return ret;
   }
@@ -170,7 +202,7 @@ export class CloudFormationStack {
 
   private assertExists() {
     if (!this.exists) {
-      throw new Error(`No stack named '${this.stackName}'`);
+      throw new ToolkitError(`No stack named '${this.stackName}'`);
     }
   }
 }
@@ -186,12 +218,15 @@ export class CloudFormationStack {
  * @returns       CloudFormation information about the ChangeSet
  */
 async function describeChangeSet(
-  cfn: CloudFormation,
+  cfn: ICloudFormationClient,
   stackName: string,
   changeSetName: string,
   { fetchAll }: { fetchAll: boolean },
-): Promise<CloudFormation.DescribeChangeSetOutput> {
-  const response = await cfn.describeChangeSet({ StackName: stackName, ChangeSetName: changeSetName }).promise();
+): Promise<DescribeChangeSetCommandOutput> {
+  const response = await cfn.describeChangeSet({
+    StackName: stackName,
+    ChangeSetName: changeSetName,
+  });
 
   // If fetchAll is true, traverse all pages from the change set description.
   while (fetchAll && response.NextToken != null) {
@@ -199,13 +234,11 @@ async function describeChangeSet(
       StackName: stackName,
       ChangeSetName: response.ChangeSetId ?? changeSetName,
       NextToken: response.NextToken,
-    }).promise();
+    });
 
     // Consolidate the changes
     if (nextPage.Changes != null) {
-      response.Changes = response.Changes != null
-        ? response.Changes.concat(nextPage.Changes)
-        : nextPage.Changes;
+      response.Changes = response.Changes != null ? response.Changes.concat(nextPage.Changes) : nextPage.Changes;
     }
 
     // Forward the new NextToken
@@ -223,7 +256,10 @@ async function describeChangeSet(
  *
  * @returns       the value that was returned by +valueProvider+
  */
-async function waitFor<T>(valueProvider: () => Promise<T | null | undefined>, timeout: number = 5000): Promise<T | undefined> {
+async function waitFor<T>(
+  valueProvider: () => Promise<T | null | undefined>,
+  timeout: number = 5000,
+): Promise<T | undefined> {
   while (true) {
     const result = await valueProvider();
     if (result === null) {
@@ -231,7 +267,7 @@ async function waitFor<T>(valueProvider: () => Promise<T | null | undefined>, ti
     } else if (result !== undefined) {
       return result;
     }
-    await new Promise(cb => setTimeout(cb, timeout));
+    await new Promise((cb) => setTimeout(cb, timeout));
   }
 }
 
@@ -248,16 +284,17 @@ async function waitFor<T>(valueProvider: () => Promise<T | null | undefined>, ti
  *
  * @returns       the CloudFormation description of the ChangeSet
  */
-// eslint-disable-next-line max-len
 export async function waitForChangeSet(
-  cfn: CloudFormation,
+  cfn: ICloudFormationClient,
   stackName: string,
   changeSetName: string,
   { fetchAll }: { fetchAll: boolean },
-): Promise<CloudFormation.DescribeChangeSetOutput> {
+): Promise<DescribeChangeSetCommandOutput> {
   debug('Waiting for changeset %s on stack %s to finish creating...', changeSetName, stackName);
   const ret = await waitFor(async () => {
-    const description = await describeChangeSet(cfn, stackName, changeSetName, { fetchAll });
+    const description = await describeChangeSet(cfn, stackName, changeSetName, {
+      fetchAll,
+    });
     // The following doesn't use a switch because tsc will not allow fall-through, UNLESS it is allows
     // EVERYWHERE that uses this library directly or indirectly, which is undesirable.
     if (description.Status === 'CREATE_PENDING' || description.Status === 'CREATE_IN_PROGRESS') {
@@ -265,19 +302,203 @@ export async function waitForChangeSet(
       return undefined;
     }
 
-    if (description.Status === 'CREATE_COMPLETE' || changeSetHasNoChanges(description)) {
+    if (description.Status === ChangeSetStatus.CREATE_COMPLETE || changeSetHasNoChanges(description)) {
       return description;
     }
 
     // eslint-disable-next-line max-len
-    throw new Error(`Failed to create ChangeSet ${changeSetName} on ${stackName}: ${description.Status || 'NO_STATUS'}, ${description.StatusReason || 'no reason provided'}`);
+    throw new ToolkitError(
+      `Failed to create ChangeSet ${changeSetName} on ${stackName}: ${description.Status || 'NO_STATUS'}, ${description.StatusReason || 'no reason provided'}`,
+    );
   });
 
   if (!ret) {
-    throw new Error('Change set took too long to be created; aborting');
+    throw new ToolkitError('Change set took too long to be created; aborting');
   }
 
   return ret;
+}
+
+export type PrepareChangeSetOptions = {
+  stack: cxapi.CloudFormationStackArtifact;
+  deployments: Deployments;
+  uuid: string;
+  willExecute: boolean;
+  sdkProvider: SdkProvider;
+  stream: NodeJS.WritableStream;
+  parameters: { [name: string]: string | undefined };
+  resourcesToImport?: ResourcesToImport;
+}
+
+export type CreateChangeSetOptions = {
+  cfn: ICloudFormationClient;
+  changeSetName: string;
+  willExecute: boolean;
+  exists: boolean;
+  uuid: string;
+  stack: cxapi.CloudFormationStackArtifact;
+  bodyParameter: TemplateBodyParameter;
+  parameters: { [name: string]: string | undefined };
+  resourcesToImport?: ResourceToImport[];
+  role?: string;
+};
+
+/**
+ * Create a changeset for a diff operation
+ */
+export async function createDiffChangeSet(
+  options: PrepareChangeSetOptions,
+): Promise<DescribeChangeSetCommandOutput | undefined> {
+  // `options.stack` has been modified to include any nested stack templates directly inline with its own template, under a special `NestedTemplate` property.
+  // Thus the parent template's Resources section contains the nested template's CDK metadata check, which uses Fn::Equals.
+  // This causes CreateChangeSet to fail with `Template Error: Fn::Equals cannot be partially collapsed`.
+  for (const resource of Object.values(options.stack.template.Resources ?? {})) {
+    if ((resource as any).Type === 'AWS::CloudFormation::Stack') {
+      debug('This stack contains one or more nested stacks, falling back to template-only diff...');
+
+      return undefined;
+    }
+  }
+
+  return uploadBodyParameterAndCreateChangeSet(options);
+}
+
+/**
+ * Returns all file entries from an AssetManifestArtifact that look like templates.
+ *
+ * This is used in the `uploadBodyParameterAndCreateChangeSet` function to find
+ * all template asset files to build and publish.
+ *
+ * Returns a tuple of [AssetManifest, FileManifestEntry[]]
+ */
+function templatesFromAssetManifestArtifact(
+  artifact: cxapi.AssetManifestArtifact,
+): [AssetManifest, FileManifestEntry[]] {
+  const assets: FileManifestEntry[] = [];
+  const fileName = artifact.file;
+  const assetManifest = AssetManifest.fromFile(fileName);
+
+  assetManifest.entries.forEach((entry) => {
+    if (entry.type === 'file') {
+      const source = (entry as FileManifestEntry).source;
+      if (source.path && source.path.endsWith('.template.json')) {
+        assets.push(entry as FileManifestEntry);
+      }
+    }
+  });
+  return [assetManifest, assets];
+}
+
+async function uploadBodyParameterAndCreateChangeSet(
+  options: PrepareChangeSetOptions,
+): Promise<DescribeChangeSetCommandOutput | undefined> {
+  try {
+    await uploadStackTemplateAssets(options.stack, options.deployments);
+    const env = await options.deployments.envs.accessStackForMutableStackOperations(options.stack);
+
+    const bodyParameter = await makeBodyParameter(
+      options.stack,
+      env.resolvedEnvironment,
+      new AssetManifestBuilder(),
+      env.resources,
+    );
+    const cfn = env.sdk.cloudFormation();
+    const exists = (await CloudFormationStack.lookup(cfn, options.stack.stackName, false)).exists;
+
+    const executionRoleArn = await env.replacePlaceholders(options.stack.cloudFormationExecutionRoleArn);
+    options.stream.write(
+      'Hold on while we create a read-only change set to get a diff with accurate replacement information (use --no-change-set to use a less accurate but faster template-only diff)\n',
+    );
+
+    return await createChangeSet({
+      cfn,
+      changeSetName: 'cdk-diff-change-set',
+      stack: options.stack,
+      exists,
+      uuid: options.uuid,
+      willExecute: options.willExecute,
+      bodyParameter,
+      parameters: options.parameters,
+      resourcesToImport: options.resourcesToImport,
+      role: executionRoleArn,
+    });
+  } catch (e: any) {
+    debug(e);
+    options.stream.write(
+      'Could not create a change set, will base the diff on template differences (run again with -v to see the reason)\n',
+    );
+
+    return undefined;
+  }
+}
+
+/**
+ * Uploads the assets that look like templates for this CloudFormation stack
+ *
+ * This is necessary for any CloudFormation call that needs the template, it may need
+ * to be uploaded to an S3 bucket first. We have to follow the instructions in the
+ * asset manifest, because technically that is the only place that knows about
+ * bucket and assumed roles and such.
+ */
+export async function uploadStackTemplateAssets(stack: cxapi.CloudFormationStackArtifact, deployments: Deployments) {
+  for (const artifact of stack.dependencies) {
+    // Skip artifact if it is not an Asset Manifest Artifact
+    if (!cxapi.AssetManifestArtifact.isAssetManifestArtifact(artifact)) {
+      continue;
+    }
+
+    const [assetManifest, file_entries] = templatesFromAssetManifestArtifact(artifact);
+    for (const entry of file_entries) {
+      await deployments.buildSingleAsset(artifact, assetManifest, entry, {
+        stack,
+      });
+      await deployments.publishSingleAsset(assetManifest, entry, {
+        stack,
+      });
+    }
+  }
+}
+
+async function createChangeSet(options: CreateChangeSetOptions): Promise<DescribeChangeSetCommandOutput> {
+  await cleanupOldChangeset(options.changeSetName, options.stack.stackName, options.cfn);
+
+  debug(`Attempting to create ChangeSet with name ${options.changeSetName} for stack ${options.stack.stackName}`);
+
+  const templateParams = TemplateParameters.fromTemplate(options.stack.template);
+  const stackParams = templateParams.supplyAll(options.parameters);
+
+  const changeSet = await options.cfn.createChangeSet({
+    StackName: options.stack.stackName,
+    ChangeSetName: options.changeSetName,
+    ChangeSetType: options.resourcesToImport ? 'IMPORT' : options.exists ? 'UPDATE' : 'CREATE',
+    Description: `CDK Changeset for diff ${options.uuid}`,
+    ClientToken: `diff${options.uuid}`,
+    TemplateURL: options.bodyParameter.TemplateURL,
+    TemplateBody: options.bodyParameter.TemplateBody,
+    Parameters: stackParams.apiParameters,
+    ResourcesToImport: options.resourcesToImport,
+    RoleARN: options.role,
+    Capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM', 'CAPABILITY_AUTO_EXPAND'],
+  });
+
+  debug('Initiated creation of changeset: %s; waiting for it to finish creating...', changeSet.Id);
+  // Fetching all pages if we'll execute, so we can have the correct change count when monitoring.
+  const createdChangeSet = await waitForChangeSet(options.cfn, options.stack.stackName, options.changeSetName, {
+    fetchAll: options.willExecute,
+  });
+  await cleanupOldChangeset(options.changeSetName, options.stack.stackName, options.cfn);
+
+  return createdChangeSet;
+}
+
+export async function cleanupOldChangeset(changeSetName: string, stackName: string, cfn: ICloudFormationClient) {
+  // Delete any existing change sets generated by CDK since change set names must be unique.
+  // The delete request is successful as long as the stack exists (even if the change set does not exist).
+  debug(`Removing existing change set with name ${changeSetName} if it exists`);
+  await cfn.deleteChangeSet({
+    StackName: stackName,
+    ChangeSetName: changeSetName,
+  });
 }
 
 /**
@@ -287,16 +508,17 @@ export async function waitForChangeSet(
  * object; the latter can be empty because no resources were changed, but if
  * there are changes to Outputs, the change set can still be executed.
  */
-export function changeSetHasNoChanges(description: CloudFormation.DescribeChangeSetOutput) {
+export function changeSetHasNoChanges(description: DescribeChangeSetCommandOutput) {
   const noChangeErrorPrefixes = [
     // Error message for a regular template
-    'The submitted information didn\'t contain changes.',
+    "The submitted information didn't contain changes.",
     // Error message when a Transform is involved (see #10650)
     'No updates are to be performed.',
   ];
 
-  return description.Status === 'FAILED'
-    && noChangeErrorPrefixes.some(p => (description.StatusReason ?? '').startsWith(p));
+  return (
+    description.Status === 'FAILED' && noChangeErrorPrefixes.some((p) => (description.StatusReason ?? '').startsWith(p))
+  );
 }
 
 /**
@@ -312,15 +534,19 @@ export function changeSetHasNoChanges(description: CloudFormation.DescribeChange
  * @returns     the CloudFormation description of the stabilized stack after the delete attempt
  */
 export async function waitForStackDelete(
-  cfn: CloudFormation,
-  stackName: string): Promise<CloudFormationStack | undefined> {
-
+  cfn: ICloudFormationClient,
+  stackName: string,
+): Promise<CloudFormationStack | undefined> {
   const stack = await stabilizeStack(cfn, stackName);
-  if (!stack) { return undefined; }
+  if (!stack) {
+    return undefined;
+  }
 
   const status = stack.stackStatus;
   if (status.isFailure) {
-    throw new Error(`The stack named ${stackName} is in a failed state. You may need to delete it from the AWS console : ${status}`);
+    throw new ToolkitError(
+      `The stack named ${stackName} is in a failed state. You may need to delete it from the AWS console : ${status}`,
+    );
   } else if (status.isDeleted) {
     return undefined;
   }
@@ -339,18 +565,22 @@ export async function waitForStackDelete(
  * @returns     the CloudFormation description of the stabilized stack after the update attempt
  */
 export async function waitForStackDeploy(
-  cfn: CloudFormation,
-  stackName: string): Promise<CloudFormationStack | undefined> {
-
+  cfn: ICloudFormationClient,
+  stackName: string,
+): Promise<CloudFormationStack | undefined> {
   const stack = await stabilizeStack(cfn, stackName);
-  if (!stack) { return undefined; }
+  if (!stack) {
+    return undefined;
+  }
 
   const status = stack.stackStatus;
 
   if (status.isCreationFailure) {
-    throw new Error(`The stack named ${stackName} failed creation, it may need to be manually deleted from the AWS console: ${status}`);
+    throw new ToolkitError(
+      `The stack named ${stackName} failed creation, it may need to be manually deleted from the AWS console: ${status}`,
+    );
   } else if (!status.isDeploySuccess) {
-    throw new Error(`The stack named ${stackName} failed to deploy: ${status}`);
+    throw new ToolkitError(`The stack named ${stackName} failed to deploy: ${status}`);
   }
 
   return stack;
@@ -359,7 +589,7 @@ export async function waitForStackDeploy(
 /**
  * Wait for a stack to become stable (no longer _IN_PROGRESS), returning it
  */
-export async function stabilizeStack(cfn: CloudFormation, stackName: string) {
+export async function stabilizeStack(cfn: ICloudFormationClient, stackName: string) {
   debug('Waiting for stack %s to finish creating or updating...', stackName);
   return waitFor(async () => {
     const stack = await CloudFormationStack.lookup(cfn, stackName);
@@ -371,6 +601,14 @@ export async function stabilizeStack(cfn: CloudFormation, stackName: string) {
     if (status.isInProgress) {
       debug('Stack %s has an ongoing operation in progress and is not stable (%s)', stackName, status);
       return undefined;
+    } else if (status.isReviewInProgress) {
+      // This may happen if a stack creation operation is interrupted before the ChangeSet execution starts. Recovering
+      // from this would requiring manual intervention (deleting or executing the pending ChangeSet), and failing to do
+      // so will result in an endless wait here (the ChangeSet wont delete or execute itself). Instead of blocking
+      // "forever" we proceed as if the stack was existing and stable. If there is a concurrent operation that just
+      // hasn't finished proceeding just yet, either this operation or the concurrent one may fail due to the other one
+      // having made progress. Which is fine. I guess.
+      debug('Stack %s is in REVIEW_IN_PROGRESS state. Considering this is a stable status (%s)', stackName, status);
     }
 
     return stack;
@@ -385,8 +623,7 @@ export class TemplateParameters {
     return new TemplateParameters(template.Parameters || {});
   }
 
-  constructor(private readonly params: Record<string, TemplateParameter>) {
-  }
+  constructor(private readonly params: Record<string, TemplateParameter>) {}
 
   /**
    * Calculate stack parameters to pass from the given desired parameter values
@@ -406,7 +643,10 @@ export class TemplateParameters {
    * throw if parameters without a Default value or a Previous value are not
    * supplied.
    */
-  public updateExisting(updates: Record<string, string | undefined>, previousValues: Record<string, string>): ParameterValues {
+  public updateExisting(
+    updates: Record<string, string | undefined>,
+    previousValues: Record<string, string>,
+  ): ParameterValues {
     return new ParameterValues(this.params, updates, previousValues);
   }
 }
@@ -416,13 +656,13 @@ export class TemplateParameters {
  */
 export class ParameterValues {
   public readonly values: Record<string, string> = {};
-  public readonly apiParameters: CloudFormation.Parameter[] = [];
+  public readonly apiParameters: Parameter[] = [];
 
   constructor(
     private readonly formalParams: Record<string, TemplateParameter>,
     updates: Record<string, string | undefined>,
-    previousValues: Record<string, string> = {}) {
-
+    previousValues: Record<string, string> = {},
+  ) {
     const missingRequired = new Array<string>();
 
     for (const [key, formalParam] of Object.entries(this.formalParams)) {
@@ -433,7 +673,10 @@ export class ParameterValues {
       const updatedValue = updates[key];
       if (updatedValue !== undefined) {
         this.values[key] = updatedValue;
-        this.apiParameters.push({ ParameterKey: key, ParameterValue: updates[key] });
+        this.apiParameters.push({
+          ParameterKey: key,
+          ParameterValue: updates[key],
+        });
         continue;
       }
 
@@ -453,7 +696,7 @@ export class ParameterValues {
     }
 
     if (missingRequired.length > 0) {
-      throw new Error(`The following CloudFormation Parameters are missing a value: ${missingRequired.join(', ')}`);
+      throw new ToolkitError(`The following CloudFormation Parameters are missing a value: ${missingRequired.join(', ')}`);
     }
 
     // Just append all supplied overrides that aren't really expected (this
@@ -474,7 +717,11 @@ export class ParameterValues {
     // If any of the parameters are SSM parameters, deploying must always happen
     // because we can't predict what the values will be. We will allow some
     // parameters to opt out of this check by having a magic string in their description.
-    if (Object.values(this.formalParams).some(p => p.Type.startsWith('AWS::SSM::Parameter::') && !p.Description?.includes(SSMPARAM_NO_INVALIDATE))) {
+    if (
+      Object.values(this.formalParams).some(
+        (p) => p.Type.startsWith('AWS::SSM::Parameter::') && !p.Description?.includes(SSMPARAM_NO_INVALIDATE),
+      )
+    ) {
       return 'ssm';
     }
 
@@ -485,7 +732,7 @@ export class ParameterValues {
     }
 
     // - any of the values we're setting are new
-    if (Object.keys(this.values).some(key => !(key in currentValues))) {
+    if (Object.keys(this.values).some((key) => !(key in currentValues))) {
       return true;
     }
 

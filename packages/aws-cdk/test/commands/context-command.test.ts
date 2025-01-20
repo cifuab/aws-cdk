@@ -1,4 +1,5 @@
-import { realHandler } from '../../lib/commands/context';
+/* eslint-disable import/order */
+import { contextHandler } from '../../lib/commands/context';
 import { Configuration, Settings, Context } from '../../lib/settings';
 
 describe('context --list', () => {
@@ -12,10 +13,9 @@ describe('context --list', () => {
     });
 
     // WHEN
-    await realHandler({
-      configuration,
-      args: {},
-    } as any);
+    await contextHandler({
+      context: configuration.context,
+    });
   });
 });
 
@@ -32,10 +32,10 @@ describe('context --reset', () => {
     });
 
     // WHEN
-    await realHandler({
-      configuration,
-      args: { reset: 'foo' },
-    } as any);
+    await contextHandler({
+      context: configuration.context,
+      reset: 'foo',
+    });
 
     // THEN
     expect(configuration.context.all).toEqual({
@@ -55,17 +55,16 @@ describe('context --reset', () => {
     });
 
     // WHEN
-    await realHandler({
-      configuration,
-      args: { reset: '1' },
-    } as any);
+    await contextHandler({
+      context: configuration.context,
+      reset: '1',
+    });
 
     // THEN
     expect(configuration.context.all).toEqual({
       foo: 'bar',
     });
   });
-
 
   test('can reset matched pattern', async () => {
     // GIVEN
@@ -81,17 +80,16 @@ describe('context --reset', () => {
     });
 
     // WHEN
-    await realHandler({
-      configuration,
-      args: { reset: 'match-*' },
-    } as any);
+    await contextHandler({
+      context: configuration.context,
+      reset: 'match-*',
+    });
 
     // THEN
     expect(configuration.context.all).toEqual({
       foo: 'bar',
     });
   });
-
 
   test('prefers an exact match', async () => {
     // GIVEN
@@ -105,17 +103,16 @@ describe('context --reset', () => {
     });
 
     // WHEN
-    await realHandler({
-      configuration,
-      args: { reset: 'fo*' },
-    } as any);
+    await contextHandler({
+      context: configuration.context,
+      reset: 'fo*',
+    });
 
     // THEN
     expect(configuration.context.all).toEqual({
       foo: 'bar',
     });
   });
-
 
   test('doesn\'t throw when at least one match is reset', async () => {
     // GIVEN
@@ -124,14 +121,14 @@ describe('context --reset', () => {
       'foo': 'bar',
       'match-a': 'baz',
     }, true);
-    configuration.context = new Context(readOnlySettings, new Settings());
+    configuration.context = new Context({ bag: readOnlySettings }, { bag: new Settings() });
     configuration.context.set('match-b', 'quux');
 
     // When
-    await expect(realHandler({
-      configuration,
-      args: { reset: 'match-*' },
-    } as any));
+    await expect(contextHandler({
+      context: configuration.context,
+      reset: 'match-*',
+    }));
 
     // Then
     expect(configuration.context.all).toEqual({
@@ -150,10 +147,10 @@ describe('context --reset', () => {
     });
 
     // THEN
-    await expect(realHandler({
-      configuration,
-      args: { reset: 'baz' },
-    } as any)).rejects.toThrow(/No context value matching key/);
+    await expect(contextHandler({
+      context: configuration.context,
+      reset: 'baz',
+    })).rejects.toThrow(/No context value matching key/);
   });
 
   test('Doesn\'t throw when key not found and --force is set', async () => {
@@ -166,12 +163,12 @@ describe('context --reset', () => {
     });
 
     // THEN
-    await expect(realHandler({
-      configuration,
-      args: { reset: 'baz', force: true },
-    } as any));
+    await expect(contextHandler({
+      context: configuration.context,
+      reset: 'baz',
+      force: true,
+    }));
   });
-
 
   test('throws when no key of index found', async () => {
     // GIVEN
@@ -183,12 +180,11 @@ describe('context --reset', () => {
     });
 
     // THEN
-    await expect(realHandler({
-      configuration,
-      args: { reset: '2' },
-    } as any)).rejects.toThrow(/No context key with number/);
+    await expect(contextHandler({
+      context: configuration.context,
+      reset: '2',
+    })).rejects.toThrow(/No context key with number/);
   });
-
 
   test('throws when resetting read-only values', async () => {
     // GIVEN
@@ -196,19 +192,18 @@ describe('context --reset', () => {
     const readOnlySettings = new Settings({
       foo: 'bar',
     }, true);
-    configuration.context = new Context(readOnlySettings);
+    configuration.context = new Context({ bag: readOnlySettings });
 
     expect(configuration.context.all).toEqual({
       foo: 'bar',
     });
 
     // THEN
-    await expect(realHandler({
-      configuration,
-      args: { reset: 'foo' },
-    } as any)).rejects.toThrow(/Cannot reset readonly context value with key/);
+    await expect(contextHandler({
+      context: configuration.context,
+      reset: 'foo',
+    })).rejects.toThrow(/Cannot reset readonly context value with key/);
   });
-
 
   test('throws when no matches could be reset', async () => {
     // GIVEN
@@ -218,7 +213,7 @@ describe('context --reset', () => {
       'match-a': 'baz',
       'match-b': 'quux',
     }, true);
-    configuration.context = new Context(readOnlySettings);
+    configuration.context = new Context({ bag: readOnlySettings });
 
     expect(configuration.context.all).toEqual({
       'foo': 'bar',
@@ -227,11 +222,32 @@ describe('context --reset', () => {
     });
 
     // THEN
-    await expect(realHandler({
-      configuration,
-      args: { reset: 'match-*' },
-    } as any)).rejects.toThrow(/None of the matched context values could be reset/);
+    await expect(contextHandler({
+      context: configuration.context,
+      reset: 'match-*',
+    })).rejects.toThrow(/None of the matched context values could be reset/);
   });
-
 });
 
+describe('context --clear', () => {
+  test('can clear all context keys', async () => {
+    // GIVEN
+    const configuration = new Configuration();
+    configuration.context.set('foo', 'bar');
+    configuration.context.set('baz', 'quux');
+
+    expect(configuration.context.all).toEqual({
+      foo: 'bar',
+      baz: 'quux',
+    });
+
+    // WHEN
+    await contextHandler({
+      context: configuration.context,
+      clear: true,
+    });
+
+    // THEN
+    expect(configuration.context.all).toEqual({});
+  });
+});

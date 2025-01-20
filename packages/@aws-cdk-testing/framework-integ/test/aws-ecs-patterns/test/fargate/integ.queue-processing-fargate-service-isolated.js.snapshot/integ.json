@@ -1,0 +1,12 @@
+{
+  "version": "38.0.1",
+  "testCases": {
+    "isolatedQueueProcessingFargateServiceTest/DefaultTest": {
+      "stacks": [
+        "aws-ecs-patterns-queue-isolated"
+      ],
+      "assertionStack": "isolatedQueueProcessingFargateServiceTest/DefaultTest/DeployAssert",
+      "assertionStackName": "isolatedQueueProcessingFargateServiceTestDefaultTestDeployAssert0132317A"
+    }
+  }
+}

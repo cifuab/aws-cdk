@@ -1,13 +1,15 @@
+/* eslint-disable @cdklabs/no-literal-partition */
 import * as path from 'path';
+import { CdkCliWrapper, ICdk } from '@aws-cdk/cdk-cli-wrapper';
 import { TestCase, DefaultCdkOptions } from '@aws-cdk/cloud-assembly-schema';
-import { AVAILABILITY_ZONE_FALLBACK_CONTEXT_KEY, FUTURE_FLAGS, TARGET_PARTITIONS, FUTURE_FLAGS_EXPIRED } from '@aws-cdk/cx-api';
-import { CdkCliWrapper, ICdk } from 'cdk-cli-wrapper';
+import { AVAILABILITY_ZONE_FALLBACK_CONTEXT_KEY, TARGET_PARTITIONS } from '@aws-cdk/cx-api';
 import * as fs from 'fs-extra';
-import { flatten } from '../utils';
-import { DestructiveChange } from '../workers/common';
 import { IntegTestSuite, LegacyIntegTestSuite } from './integ-test-suite';
 import { IntegTest } from './integration-tests';
+import * as recommendedFlagsFile from '../recommended-feature-flags.json';
+import { flatten } from '../utils';
 import { AssemblyManifestReader, ManifestTrace } from './private/cloud-assembly';
+import { DestructiveChange } from '../workers/common';
 
 const DESTRUCTIVE_CHANGES = '!!DESTRUCTIVE_CHANGES:';
 
@@ -33,14 +35,14 @@ export interface IntegRunnerOptions {
    *
    * @default - no additional environment variables
    */
-  readonly env?: { [name: string]: string },
+  readonly env?: { [name: string]: string };
 
   /**
    * tmp cdk.out directory
    *
    * @default - directory will be `cdk-integ.out.${testName}`
    */
-  readonly integOutDir?: string,
+  readonly integOutDir?: string;
 
   /**
    * Instance of the CDK CLI to use
@@ -120,7 +122,7 @@ export abstract class IntegRunner {
     pathMetadata: false,
     assetMetadata: false,
     versionReporting: false,
-  }
+  };
 
   /**
    * The directory where the CDK will be synthed to
@@ -150,7 +152,10 @@ export abstract class IntegRunner {
       },
     });
     this.cdkOutDir = options.integOutDir ?? this.test.temporaryOutputDir;
-    this.cdkApp = `node ${path.relative(this.directory, this.test.fileName)}`;
+
+    const testRunCommand = this.test.appCommand;
+    this.cdkApp = testRunCommand.replace('{filePath}', path.relative(this.directory, this.test.fileName));
+
     this.profile = options.profile;
     if (this.hasSnapshot()) {
       this.expectedTestSuite = this.loadManifest();
@@ -188,7 +193,11 @@ export abstract class IntegRunner {
       },
       output: path.relative(this.directory, this.cdkOutDir),
     });
-    return this.loadManifest(this.cdkOutDir);
+    const manifest = this.loadManifest(this.cdkOutDir);
+    // after we load the manifest remove the tmp snapshot
+    // so that it doesn't mess up the real snapshot created later
+    this.cleanup();
+    return manifest;
   }
 
   /**
@@ -209,7 +218,7 @@ export abstract class IntegRunner {
     try {
       const testSuite = IntegTestSuite.fromPath(dir ?? this.snapshotDir);
       return testSuite;
-    } catch (e) {
+    } catch {
       const testCases = LegacyIntegTestSuite.fromLegacy({
         cdk: this.cdk,
         testName: this.test.normalizedTestName,
@@ -356,19 +365,25 @@ export abstract class IntegRunner {
   }
 
   protected getContext(additionalContext?: Record<string, any>): Record<string, any> {
-    const futureFlags: { [key: string]: any } = {};
-    Object.entries(FUTURE_FLAGS)
-      .filter(([k, _]) => !FUTURE_FLAGS_EXPIRED.includes(k))
-      .forEach(([k, v]) => futureFlags[k] = v);
-
     return {
-      ...futureFlags,
+      ...currentlyRecommendedAwsCdkLibFlags(),
       ...this.legacyContext,
       ...additionalContext,
+
+      // We originally had PLANNED to set this to ['aws', 'aws-cn'], but due to a programming mistake
+      // it was set to everything. In this PR, set it to everything to not mess up all the snapshots.
+      [TARGET_PARTITIONS]: undefined,
+
+      /* ---------------- THE FUTURE LIVES BELOW----------------------------
+      // Restricting to these target partitions makes most service principals synthesize to
+      // `service.${URL_SUFFIX}`, which is technically *incorrect* (it's only `amazonaws.com`
+      // or `amazonaws.com.cn`, never UrlSuffix for any of the restricted regions) but it's what
+      // most existing integ tests contain, and we want to disturb as few as possible.
+      // [TARGET_PARTITIONS]: ['aws', 'aws-cn'],
+      /* ---------------- END OF THE FUTURE ------------------------------- */
     };
   }
 }
-
 
 // Default context we run all integ tests with, so they don't depend on the
 // account of the exercising user.
@@ -407,15 +422,25 @@ export const DEFAULT_SYNTH_OPTIONS = {
         },
       ],
     },
-
-    // Restricting to these target partitions makes most service principals synthesize to
-    // `service.${URL_SUFFIX}`, which is technically *incorrect* (it's only `amazonaws.com`
-    // or `amazonaws.com.cn`, never UrlSuffix for any of the restricted regions) but it's what
-    // most existing integ tests contain, and we want to disturb as few as possible.
-    [TARGET_PARTITIONS]: ['aws', 'aws-cn'],
   },
   env: {
     CDK_INTEG_ACCOUNT: '12345678',
     CDK_INTEG_REGION: 'test-region',
+    CDK_INTEG_HOSTED_ZONE_ID: 'Z23ABC4XYZL05B',
+    CDK_INTEG_HOSTED_ZONE_NAME: 'example.com',
+    CDK_INTEG_DOMAIN_NAME: '*.example.com',
+    CDK_INTEG_CERT_ARN: 'arn:aws:acm:test-region:12345678:certificate/86468209-a272-595d-b831-0efb6421265z',
+    CDK_INTEG_SUBNET_ID: 'subnet-0dff1a399d8f6f92c',
   },
 };
+
+/**
+ * Return the currently recommended flags for `aws-cdk-lib`.
+ *
+ * These have been built into the CLI at build time. If this ever gets changed
+ * back to a dynamic load, remember that this source file may be bundled into
+ * a JavaScript bundle, and `__dirname` might not point where you think it does.
+ */
+export function currentlyRecommendedAwsCdkLibFlags() {
+  return recommendedFlagsFile;
+}

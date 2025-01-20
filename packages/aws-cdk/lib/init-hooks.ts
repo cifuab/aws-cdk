@@ -1,5 +1,7 @@
 import * as path from 'path';
 import { shell } from './os';
+import { ToolkitError } from './toolkit/error';
+import { formatErrorMessage } from './util/error';
 
 export type SubstitutePlaceholders = (...fileNames: string[]) => Promise<void>;
 
@@ -84,7 +86,7 @@ async function dotnetAddProject(targetDirectory: string, context: HookContext, e
   const csprojPath = path.join(targetDirectory, 'src', pname, `${pname}.${ext}`);
   try {
     await shell(['dotnet', 'sln', slnPath, 'add', csprojPath]);
-  } catch (e) {
-    throw new Error(`Could not add project ${pname}.${ext} to solution ${pname}.sln. ${e.message}`);
+  } catch (e: any) {
+    throw new ToolkitError(`Could not add project ${pname}.${ext} to solution ${pname}.sln. ${formatErrorMessage(e)}`);
   }
 };

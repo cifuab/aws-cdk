@@ -1,0 +1,19 @@
+{
+  "version": "36.0.24",
+  "files": {
+    "37b91cb1e0dfc2006cafe63b6b43d78d4366e89bf2b2bb5033f5b1da6d300da6": {
+      "source": {
+        "path": "sns-bucket-notifications.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "current_account-current_region": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "37b91cb1e0dfc2006cafe63b6b43d78d4366e89bf2b2bb5033f5b1da6d300da6.json",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

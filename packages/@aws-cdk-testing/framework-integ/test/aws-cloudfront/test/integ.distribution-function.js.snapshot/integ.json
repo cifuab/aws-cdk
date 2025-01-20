@@ -1,0 +1,12 @@
+{
+  "version": "36.0.0",
+  "testCases": {
+    "DistributionFunction/DefaultTest": {
+      "stacks": [
+        "integ-distribution-function"
+      ],
+      "assertionStack": "DistributionFunction/DefaultTest/DeployAssert",
+      "assertionStackName": "DistributionFunctionDefaultTestDeployAssert9D427BC1"
+    }
+  }
+}

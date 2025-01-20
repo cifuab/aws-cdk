@@ -1,0 +1,14 @@
+{
+  "version": "36.0.5",
+  "testCases": {
+    "integ.route53": {
+      "stacks": [
+        "aws-cdk-route53-integ"
+      ],
+      "diffAssets": false,
+      "stackUpdateWorkflow": true
+    }
+  },
+  "synthContext": {},
+  "enableLookups": false
+}

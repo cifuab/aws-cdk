@@ -1,0 +1,19 @@
+{
+  "version": "38.0.1",
+  "files": {
+    "48862253eb1fed012c1b274795624b9ddc15444520044ea09a9ecd3ed2f4c300": {
+      "source": {
+        "path": "RuleStack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "current_account-current_region": {
+          "bucketName": "cdk-hnb659fds-assets-${AWS::AccountId}-${AWS::Region}",
+          "objectKey": "48862253eb1fed012c1b274795624b9ddc15444520044ea09a9ecd3ed2f4c300.json",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/cdk-hnb659fds-file-publishing-role-${AWS::AccountId}-${AWS::Region}"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

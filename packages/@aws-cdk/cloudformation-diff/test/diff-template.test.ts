@@ -1,4 +1,6 @@
-import { diffTemplate, ResourceImpact } from '../lib/diff-template';
+import * as fc from 'fast-check';
+import { arbitraryTemplate } from './test-arbitraries';
+import { fullDiff, ResourceImpact } from '../lib/diff-template';
 
 const POLICY_DOCUMENT = { foo: 'Bar' }; // Obviously a fake one!
 const BUCKET_POLICY_RESOURCE = {
@@ -25,7 +27,7 @@ test('when there is no difference', () => {
   // Making a JSON-clone, because === is cheating!
   const newTemplate = JSON.parse(JSON.stringify(currentTemplate));
 
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.differenceCount).toBe(0);
 });
 
@@ -34,7 +36,7 @@ test('when a resource is created', () => {
 
   const newTemplate = { Resources: { BucketResource: { Type: 'AWS::S3::Bucket' } } };
 
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.differenceCount).toBe(1);
   expect(differences.resources.differenceCount).toBe(1);
   const difference = differences.resources.changes.BucketResource;
@@ -58,7 +60,7 @@ test('when a resource is deleted (no DeletionPolicy)', () => {
     },
   };
 
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.differenceCount).toBe(1);
   expect(differences.resources.differenceCount).toBe(1);
   const difference = differences.resources.changes.BucketPolicyResource;
@@ -87,7 +89,7 @@ test('when a resource is deleted (DeletionPolicy=Retain)', () => {
     Resources: { BucketResource: { Type: 'AWS::S3::Bucket' } },
   };
 
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.differenceCount).toBe(1);
   expect(differences.resources.differenceCount).toBe(1);
   const difference = differences.resources.changes.BucketPolicyResource;
@@ -128,7 +130,7 @@ test('when a property changes', () => {
     },
   };
 
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.differenceCount).toBe(1);
   expect(differences.resources.differenceCount).toBe(1);
   const difference = differences.resources.changes.BucketResource;
@@ -159,7 +161,7 @@ test('change in dependencies counts as a simple update', () => {
       },
     },
   };
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
 
   // THEN
   expect(differences.differenceCount).toBe(1);
@@ -194,7 +196,7 @@ test('when a property is deleted', () => {
     },
   };
 
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.differenceCount).toBe(1);
   expect(differences.resources.differenceCount).toBe(1);
   const difference = differences.resources.changes.BucketResource;
@@ -232,7 +234,7 @@ test('when a property is added', () => {
     },
   };
 
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.differenceCount).toBe(1);
   expect(differences.resources.differenceCount).toBe(1);
   const difference = differences.resources.changes.BucketResource;
@@ -266,7 +268,7 @@ test('when a resource type changed', () => {
     },
   };
 
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.differenceCount).toBe(1);
   expect(differences.resources.differenceCount).toBe(1);
   const difference = differences.resources.changes.BucketResource;
@@ -316,7 +318,7 @@ test('resource replacement is tracked through references', () => {
       },
     },
   };
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
 
   // THEN
   expect(differences.resources.differenceCount).toBe(3);
@@ -368,10 +370,10 @@ test('adding and removing quotes from a numeric property causes no changes', () 
       },
     },
   };
-  let differences = diffTemplate(currentTemplate, newTemplate);
+  let differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.resources.differenceCount).toBe(0);
 
-  differences = diffTemplate(newTemplate, currentTemplate);
+  differences = fullDiff(newTemplate, currentTemplate);
   expect(differences.resources.differenceCount).toBe(0);
 });
 
@@ -399,122 +401,9 @@ test('versions are correctly detected as not numbers', () => {
     },
   };
 
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.resources.differenceCount).toBe(1);
 });
-
-test('single element arrays are equivalent to the single element in DependsOn expressions', () => {
-  // GIVEN
-  const currentTemplate = {
-    Resources: {
-      BucketResource: {
-        Type: 'AWS::S3::Bucket',
-        DependsOn: ['SomeResource'],
-      },
-    },
-  };
-
-  // WHEN
-  const newTemplate = {
-    Resources: {
-      BucketResource: {
-        Type: 'AWS::S3::Bucket',
-        DependsOn: 'SomeResource',
-      },
-    },
-  };
-
-  let differences = diffTemplate(currentTemplate, newTemplate);
-  expect(differences.resources.differenceCount).toBe(0);
-
-  differences = diffTemplate(newTemplate, currentTemplate);
-  expect(differences.resources.differenceCount).toBe(0);
-});
-
-test('array equivalence is independent of element order in DependsOn expressions', () => {
-  // GIVEN
-  const currentTemplate = {
-    Resources: {
-      BucketResource: {
-        Type: 'AWS::S3::Bucket',
-        DependsOn: ['SomeResource', 'AnotherResource'],
-      },
-    },
-  };
-
-  // WHEN
-  const newTemplate = {
-    Resources: {
-      BucketResource: {
-        Type: 'AWS::S3::Bucket',
-        DependsOn: ['AnotherResource', 'SomeResource'],
-      },
-    },
-  };
-
-  let differences = diffTemplate(currentTemplate, newTemplate);
-  expect(differences.resources.differenceCount).toBe(0);
-
-  differences = diffTemplate(newTemplate, currentTemplate);
-  expect(differences.resources.differenceCount).toBe(0);
-});
-
-test('arrays of different length are considered unequal in DependsOn expressions', () => {
-  // GIVEN
-  const currentTemplate = {
-    Resources: {
-      BucketResource: {
-        Type: 'AWS::S3::Bucket',
-        DependsOn: ['SomeResource', 'AnotherResource', 'LastResource'],
-      },
-    },
-  };
-
-  // WHEN
-  const newTemplate = {
-    Resources: {
-      BucketResource: {
-        Type: 'AWS::S3::Bucket',
-        DependsOn: ['AnotherResource', 'SomeResource'],
-      },
-    },
-  };
-
-  let differences = diffTemplate(currentTemplate, newTemplate);
-  expect(differences.resources.differenceCount).toBe(1);
-
-  differences = diffTemplate(newTemplate, currentTemplate);
-  expect(differences.resources.differenceCount).toBe(1);
-});
-
-test('arrays that differ only in element order are considered unequal outside of DependsOn expressions', () => {
-  // GIVEN
-  const currentTemplate = {
-    Resources: {
-      BucketResource: {
-        Type: 'AWS::S3::Bucket',
-        BucketName: { 'Fn::Select': [0, ['name1', 'name2']] },
-      },
-    },
-  };
-
-  // WHEN
-  const newTemplate = {
-    Resources: {
-      BucketResource: {
-        Type: 'AWS::S3::Bucket',
-        BucketName: { 'Fn::Select': [0, ['name2', 'name1']] },
-      },
-    },
-  };
-
-  let differences = diffTemplate(currentTemplate, newTemplate);
-  expect(differences.resources.differenceCount).toBe(1);
-
-  differences = diffTemplate(newTemplate, currentTemplate);
-  expect(differences.resources.differenceCount).toBe(1);
-});
-
 test('boolean properties are considered equal with their stringified counterparts', () => {
   // GIVEN
   const currentTemplate = {
@@ -543,7 +432,7 @@ test('boolean properties are considered equal with their stringified counterpart
   };
 
   // WHEN
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
 
   // THEN
   expect(differences.differenceCount).toBe(0);
@@ -575,10 +464,10 @@ test('when a property changes including equivalent DependsOn', () => {
   };
 
   // THEN
-  let differences = diffTemplate(currentTemplate, newTemplate);
+  let differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.resources.differenceCount).toBe(1);
 
-  differences = diffTemplate(newTemplate, currentTemplate);
+  differences = fullDiff(newTemplate, currentTemplate);
   expect(differences.resources.differenceCount).toBe(1);
 });
 
@@ -613,7 +502,7 @@ test.each([
     },
   };
   // WHEN
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
 
   // THEN
   expect(differences.differenceCount).toBe(1);
@@ -649,7 +538,7 @@ test('when a property with a number-like format doesn\'t change', () => {
     },
   };
 
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.differenceCount).toBe(0);
   expect(differences.resources.differenceCount).toBe(0);
   const difference = differences.resources.changes.BucketResource;
@@ -675,7 +564,7 @@ test('handles a resource changing its Type', () => {
     },
   };
 
-  const differences = diffTemplate(currentTemplate, newTemplate);
+  const differences = fullDiff(currentTemplate, newTemplate);
   expect(differences.differenceCount).toBe(1);
   expect(differences.resources.differenceCount).toBe(1);
   const difference = differences.resources.changes.FunctionApi;
@@ -688,4 +577,49 @@ test('handles a resource changing its Type', () => {
     propertyDiffs: {},
     resourceTypes: { newType: 'AWS::ApiGateway::RestApi', oldType: 'AWS::Serverless::Api' },
   });
+});
+
+test('diffing any two arbitrary templates should not crash', () => {
+  // We're not interested in making sure we find the right differences here -- just
+  // that we're not crashing.
+  fc.assert(fc.property(arbitraryTemplate, arbitraryTemplate, (t1, t2) => {
+    fullDiff(t1, t2);
+  }), {
+    // path: '1:0:0:0:3:0:1:1:1:1:1:1:1:1:1:1:1:1:1:2:1:1:1',
+  });
+});
+
+test('metadata changes are rendered in the diff', () => {
+  // GIVEN
+  const currentTemplate = {
+    Resources: {
+      BucketResource: {
+        Type: 'AWS::S3::Bucket',
+        BucketName: 'magic-bucket',
+        Metadata: {
+          'aws:cdk:path': '/foo/BucketResource',
+        },
+      },
+    },
+  };
+
+  // WHEN
+  const newTemplate = {
+    Resources: {
+      BucketResource: {
+        Type: 'AWS::S3::Bucket',
+        BucketName: 'magic-bucket',
+        Metadata: {
+          'aws:cdk:path': '/bar/BucketResource',
+        },
+      },
+    },
+  };
+
+  // THEN
+  let differences = fullDiff(currentTemplate, newTemplate);
+  expect(differences.differenceCount).toBe(1);
+
+  differences = fullDiff(newTemplate, currentTemplate);
+  expect(differences.resources.differenceCount).toBe(1);
 });

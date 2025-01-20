@@ -1,86 +1,123 @@
 # AWS CDK Roadmap
 
-The [AWS CDK Roadmap] lets developers know about our upcoming features and priorities to help them plan how to best leverage the CDK and identify opportunities to contribute to the project. The roadmap provides a high-level view of our work in progress across the [aws-cdk], [aws-cdk-rfcs], and [jsii] repositories, and creates an opportunity for customers to engage in a conversation with AWS CDK engineers to give us direct feedback.
+> Updated 11/5/2024
 
-[AWS CDK Roadmap]: https://github.com/orgs/aws/projects/7
+The roadmap priorities for the AWS CDK (Cloud Development Kit) are informed by what we hear from customers and interactions on Github, CDK.dev Slack, Stack Overflow, and Twitter. This document outlines the high level direction we are working towards, and for each project there is a tracking issue where you can leave feedback. We update this doc on a quarterly basis to reflect any changing priorities.
+
+Follow [CDK Live!](https://www.youtube.com/@CDK-Live) and [cdk.dev](https://cdk.dev/) to learn what's new in AWS CDK.
+
+Security and stability of the CDK is a top priority. If you think you’ve found a potential security issue, please do not post it as an issue or a discussion thread in this repository. Instead, please follow the instructions [here](https://aws.amazon.com/security/vulnerability-reporting/) or directly email [AWS security](mailto:aws-security@amazon.com).
+
 [aws-cdk]: https://github.com/aws/aws-cdk
 [aws-cdk-rfcs]: https://github.com/aws/aws-cdk-rfcs
 [jsii]: https://github.com/aws/jsii
 
-## Roadmap FAQs
+## Our Core Tenets (which guide prioritization decisions)
 
-**Q: How do you manage the roadmap?**
+- **We empower CDK builders to innovate with confidence, without sacrificing security.** The CDK provides customers with conviction by providing a clear and streamlined direction to building secure, modernized, industry leading innovations with AWS.
+- **Productivity through simplicity.** The CDK measurably improves developer productivity in building with AWS. We make Infrastructure as Code simple to define, understand, change, and troubleshoot.
+- **Be transparent.** The AWS CDK team’s current work should be easily visible.
+- **Listen to customers.** Allow them to participate in design decisions and to vote on and propose new AWS CDK features. We will periodically reprioritize the roadmap based on customer feedback.
 
-A: We know that our customers are making decisions and plans based on what we
-are developing, and we want to provide the information they need to be successful. Our roadmap management tenets are:
+## List of Annotations
 
-* **Be transparent** with customers about the AWS CDK team’s work in progress
-* **Listen to customers,** allowing them to participate in design decisions and to vote on and propose new AWS CDK
-  features. We will periodically re-prioritize the roadmap based on customer feedback
-* **Stay up-to-date,** or we will lose customer trust
-* **Provide the right level of detail** so customers can easily see what we’re working on at a glance, without being
-  overwhelmed by minutiae
-* **Guide the community** on what AWS CDK constructs or features to contribute without the risk of conflicting with work
-  already in progress
+| Symbol |     Description      |
+| :----- | :------------------: |
+| 🔍     |     Exploration      |
+| 👂🏽     | Waiting for feedback |
+| 🚦     | Work ready to begin  |
+| 🛠️     |   Work in progress   |
+| 🚀     |       Released       |
+| 🚫     |    Not on roadmap    |
 
-**Q: What do the roadmap project board columns mean?**
+## Themes
 
-A: There are four columns on the roadmap project board:
+Over the course of the last few years, the CDK team has spent time speaking with and learning from its community. We've gathered that there were certain features that were greatly valued from the CDK and other features which would be beneficial to be added to its experience. We appreciate everyone sharing this feedback and we plan on addressing it through the targeted themes and RFCs listed below. Please be aware that the team will periodically work to add RFCs as we look to prioritize more work.
 
-* **Researching** - We’re thinking about it, but cannot commit if, or when, we will work on items in this list.
-  This means we are still designing the feature and evaluating how it might work. This is the phase when we collect
-  customer use cases and feedback on how they want to see something implemented. There is no firm commitment to deliver
-  functionality listed in the Researching column, and there might be situations that require us to move items from the
-  roadmap back to the backlog.
-* **We’re working on it** - In progress, but further out. We have made an implied commitment to work on items in this
-  bucket, they have some level of design spec’ed out, and a developer assigned to them. Items might linger in this
-  bucket as we work through the implementation details, or scope stuff out. Think several months out until a developer
-  preview release, give or take.
-* **Developer preview** - It’s available now as a release candidate. Items will spend extended periods of time in
-  developer preview as we conduct user acceptance testing and accumulate sufficient usage to declare the API stable and
-  ready for general availability. We will only make breaking changes to developer preview modules when we need to address unforeseen use cases or issues. Not all
-  features, such as enhancements to the CDK CLI, will have a developer preview phase. In these cases the tracking issue
-  is moved directly to the Shipped bucket when released.
-* **Shipped** - It’s available now, fully supported by AWS, and we guarantee the API is stable and safe to use in
-  production.
+### L2 Abstractions
 
-**Q: How do items on the roadmap move across the project board?**
+The CDK team is committed to supporting our existing library of AWS L2 abstractions. We continue to solicit community feedback on where additional L2 coverage makes it simpler and more efficient to build with AWS. Current L2s that the team’s working on are listed below. Please be aware that this list will update throughout the year. If you have feedback on other L2s that should be prioritized by our team, feel free to submit a separate RFC.
+ 
+* 🚀 [CloudFront Origin Access Control L2](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_cloudfront_origins-readme.html)
+* 🚀 [AWS Cognito_Identity_pool graduation to Developer Preview](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cognito-identitypool-alpha-readme.html)
+* 🚀 [AWS Kinesis_firehose graduation to Developer Preview](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-kinesisfirehose-alpha-readme.html)
+* 🛠️ [Rewrite EKS L2](https://github.com/aws/aws-cdk-rfcs/issues/605)
+* 🔍 [aws-lambda-python graduation](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-lambda-python-alpha-readme.html)
+* 🔍 [Auto-generation of L2 constructs](https://github.com/aws/aws-cdk-rfcs/issues/611) 
+* 🔍 [Glue Alpha Construct Graduation](https://github.com/aws/aws-cdk/issues/7534) 
+* 🔍 [aws-servicecatalogappregistry](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-servicecatalogappregistry-alpha-readme.html) 
 
-A:  The [AWS Construct Library module lifecycle
-document](https://github.com/aws/aws-cdk-rfcs/blob/master/text/0107-construct-library-module-lifecycle.md) describes how
-we graduate packages from experimental, to developer preview, to generally available.
+### Updates/Enhancements
 
-**Q: Why are there no dates on this roadmap?**
+- 🚀 [Upgrade custom resources for managed lambda runtime from Node18 to Node20](https://github.com/aws/aws-cdk/issues/29786)
+- 🛠️ [Upgrade from the AWS SDK V2 to V3](https://github.com/aws/aws-cdk/issues/29694)
 
-A: Security and operational stability are our main priority and we will not ship a feature until these criteria are met,
-therefore we generally don’t provide specific target dates for releases.
+### User Experience
 
-**Q: Is every feature on the roadmap?**
+- 🚀 [Garbage Collection for Assets](https://github.com/aws/aws-cdk-rfcs/issues/64)
+- 🛠️ [Programmatic Access of the AWS CDK CLI](https://github.com/aws/aws-cdk-rfcs/issues/300)
+- 🚦 [CDK Refactoring](https://github.com/aws/aws-cdk-rfcs/issues/162)
+- 🚦 [cli: Enable client-side telemetry and analytics](https://github.com/aws/aws-cdk/issues/32010)
 
-A: The AWS Cloud Development Kit roadmap provides transparency on our priority for adding new programming languages,
-developer experience improvements, and service coverage in the AWS Construct Library. The AWS CDK toolkit and AWS
-Construct Library are such a large surface areas we are intentionally keeping the roadmap at a high-level, so not every
-CDK feature request will appear on the roadmap. Instead, the roadmap will include a tracking issue
-for each deliverable that provides a feature overview and contains links to relevant, more granular issues and pull
-requests. If you want to track the status of a specific issue or pull request, you can do so by monitoring that work
-item in the [aws-cdk] GitHub repository.
+### Community contribution call-outs
 
-**Q: What is a tracking issue?**
+Thank you to our community members that have contributed to the project. Below are some of the great contributions from the community! We'll continue to update this list as contributions come in, and please feel free to reach out on the cdk.dev slack workspace if you have any questions or feedback.
 
-A: We create a tracking issue for each CDK feature, AWS Construct Library module, and jsii-supported programming language. Tracking issues provide a brief summary of the feature and a consolidated view of the work scoped for the release. They include links to design documentation, implementation details, and relevant issues. Tracking issues are living documents that start from a basic template and grow more robust over time as we experiment and learn. You can easily find tracking issues by filtering on the [management/tracking label](https://github.com/aws/aws-cdk/labels/management%2Ftracking).
+- 🚀 [EventBridge Pipes Alpha Construct](https://github.com/aws/aws-cdk/pull/28388) - [Raphael Manke](https://github.com/RaphaelManke)
+- 🚀 [CodePipeline support for pipeline type V2 with pipeline-level variables and triggers](https://github.com/aws/aws-cdk/pull/28538) - [Kenta Goto](https://github.com/go-to-k)
+- 🚀 [Cloudwatch Synthetics: Update to canary runtime support for NodeJS and Python](https://github.com/aws/aws-cdk/pull/29132) - [Henry Wilson](https://github.com/wilhen01)
+- 🚀 [EFS File System Replication](https://github.com/aws/aws-cdk/pull/29347) - [
+  kazuho cryer-shinozuka](https://github.com/badmintoncryer)
 
-**Q: How can I provide feedback on the roadmap or ask for more information about a feature?**
+## Community Engagement
 
-A: Please open an issue!
+We would love to hear from you on how the CDK operates today and how it should grow in the future. To report a bug or create a small feature request, please [create an issue here](https://github.com/aws/aws-cdk/issues/new/choose). If you are seeking to request a change in strategic direction or make a CDK core framework change, please [create a Request for Comments (RFC) ticket here](https://github.com/aws/aws-cdk-rfcs/issues/new/choose). If you are ever unsure about where your feature request should live, it is best to follow the first link within the aws-cdk repo.
+
+![image](https://github.com/aws/aws-cdk/assets/142322013/ea006330-caa7-4c00-8eba-8e8fe379ef6b)
+
+Listening and working with the open source community is really important to us. If you would like to give us your feedback on how we are doing, feel free to reach out to our team via cdk.dev slack.
+
+## Educational Content
+
+To make the CDK more accessible and easier to understand, we publish educational content like blog posts, videos and workshops. Here are some from AWS.
+
+- [Blog] [How the PGA Tour speeds up development with the AWS CDK](https://aws.amazon.com/blogs/devops/driving-development-forward-how-the-pga-tour-speeds-up-development-with-the-aws-cdk/)
+- [Workshop/Livestream] [CDK Workshop Series on CDK Live!](https://youtube.com/playlist?list=PLp1wJE9SAACOLvdtKL2P2Kq_N_AiYIj8N&si=hH14gEVmM_35xivq)
+- [Livestream] [Learn how to build and publish AWS CDK Constructs](https://www.youtube.com/live/kUfSoFy4Mgg?si=aDMMacUT3lq6ZeKw)
+- [Workshop] [The AWS CDK Workshop](https://cdkworkshop.com/)
+- [Workshop] [Extended CDK Workshop](https://catalog.us-east-1.prod.workshops.aws/workshops/071bbc60-6c1f-47b6-8c66-e84f5dc96b3f/en-US)
+- [Workshop] [Automating your workload deployments in AWS Local Zones](https://catalog.workshops.aws/localzone-cdk/en-US)
+- [Blogpost] [Using AWS CloudFormation and AWS Cloud Development Kit to provision multicloud resources](https://aws.amazon.com/blogs/devops/using-aws-cloudformation-and-aws-cloud-development-kit-to-provision-multicloud-resources/)
+- [Blogpost] [CDK Pipelines: Continuous delivery for AWS CDK applications](https://aws.amazon.com/blogs/developer/cdk-pipelines-continuous-delivery-for-aws-cdk-applications/)
+- [Blogpost] [Better together: AWS SAM and AWS CDK](https://aws.amazon.com/blogs/compute/better-together-aws-sam-and-aws-cdk/)
+- [Videos] [CDK Live!](https://www.youtube.com/@CDK-Live)
+- [CDK Day] [Track 1 (English) for CDK Day 2023](https://www.youtube.com/watch?v=qlUR5jVBC6c)
+- [CDK Day] [Track 2 (English) for CDK Day 2023](https://www.youtube.com/watch?v=b-nSH18gFQk)
+- [CDK Day] [Track 3 (Spanish) for CDK Day 2023](https://www.youtube.com/watch?v=ZAQC-cOXL4M)
+- [re:Invent Content] Search through [all content here](https://www.youtube.com/@amazonwebservices)
+
+## Disclaimer
+
+The AWS CDK team values feedback and guidance from its community of users, although final decisions on inclusion into the project will be made by AWS. We determine the high-level direction for our open roadmap based on customer feedback and popularity (👍🏽 and comments), security and operational impacts, and business value. Where features don’t meet our goals and longer-term strategy, we will communicate that clearly and openly as quickly as possible with an explanation of why the decision was made.
+
+## FAQs
+
+**Q: Why did you build an open roadmap?**
+A: Your feedback and suggestions would help in ensuring that we are working on the most important and impactful issues. And if you are making decisions and plans based on what we are developing, this will provide insights on what is coming down the road for the CDK.
+
+**Q: Why are there no dates on your roadmap?**
+A: Because security and operational stability are our highest priorities, the above new features cannot be provided specific target dates. The roadmap is subject to change at any time, and roadmap issues in this repository do not guarantee a feature will be launched as proposed.
+
+**Q: Is everything on the roadmap?**
+A: We will publish high-level direction that is within the scope of the CDK. Minor features and performance improvement tasks are not on the roadmap currently, but we are constantly trying to improve the roadmap so please leave your suggestions [here](https://github.com/aws/aws-sam-cli/issues/3267).
+
+**Q: How can I provide feedback or ask for more information?**
+A: When in doubt, please create an issue! Issues will be reviewed and/or forwarded appropriately. A great time to provide feedback is when the project is in Exploration, RFC stage, or when the feature is in beta release. As always, we listen to your feedback and adapt our plans if needed.
+
+**Q: Can I 👍🏽 existing issues?**
+A: We strongly encourage you to do so, as it helps us understand which issues will have the widest impact. You can navigate to the issue details page and add a reaction (👍🏽).
 
 **Q: How can I request a feature be added to the roadmap?**
+A: We encourage you to open an issue, even if you’ve requested it before via other channels. Issues submitted will be reviewed by the roadmap maintainers. If you find an issue already created for the feature, please upvote it (👍🏽) and leave comments specific to your use case. To report a bug or create a small feature request, please [create an issue here](https://github.com/aws/aws-cdk/issues/new/choose). If you are seeking to request a change in the CDK’s strategic direction or make a CDK core framework change, please [create a Request for Comments (RFC) ticket here](https://github.com/aws/aws-cdk-rfcs/issues/new/choose).
 
-A: Please open an issue! Community submitted issues will be tagged “feature-request” and will be reviewed by the team.
-
-**Q: Can I “+1” tracking issues and feature requests?**
-
-A: We strongly encourage you to do so, as it helps us understand which issues will have the broadest impact. You can navigate to the issue details page and add a reaction. There are six types of reactions (thumbs up “+1”, thumbs down “-1”, confused, heart, watching, laugh, and hooray) you can use to help us decide which items will benefit you most.
-
-**Q: Will you accept a pull request to the aws-cdk repo?**
-
-A: Yes! We take PRs very seriously and will review for inclusion. You can read how to contribute to the CDK [here](https://github.com/aws/aws-cdk/blob/main/CONTRIBUTING.md).
+Please do not be discouraged if your ticket is closed—that may happen if it is not a priority during the quarter it was submitted. The CDK team closes tickets in an effort to display what is prioritized at a given moment. If this happens, we invite you to try submitting it again later in the year.

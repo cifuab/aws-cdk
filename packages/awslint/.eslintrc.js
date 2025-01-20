@@ -8,14 +8,15 @@ module.exports = {
   plugins: [
     '@typescript-eslint',
     'import',
-    '@aws-cdk',
+    '@cdklabs',
+    '@stylistic',
     'jest',
   ],
   parser: '@typescript-eslint/parser',
   parserOptions: {
     ecmaVersion: '2018',
     sourceType: 'module',
-    project: './tsconfig.json',
+    project: __dirname + '/tsconfig.json',
   },
   extends: [
     'plugin:import/typescript',
@@ -34,16 +35,15 @@ module.exports = {
   },
   ignorePatterns: ['*.js', '*.d.ts', 'node_modules/', '*.generated.ts'],
   rules: {
-    '@aws-cdk/no-core-construct': [ 'error' ],
-    '@aws-cdk/no-qualified-construct': [ 'error' ],
-    '@aws-cdk/invalid-cfn-imports': [ 'error' ],
+    '@cdklabs/no-core-construct': ['error'],
+    '@cdklabs/invalid-cfn-imports': ['error'],
     // Require use of the `import { foo } from 'bar';` form instead of `import foo = require('bar');`
     '@typescript-eslint/no-require-imports': ['error'],
-    '@typescript-eslint/indent': ['error', 2],
+    '@stylistic/indent': ['error', 2],
 
     // Style
     'quotes': ['error', 'single', { avoidEscape: true }],
-    'comma-dangle': ['error', 'always-multiline'], // ensures clean diffs, see https://medium.com/@nikgraf/why-you-should-enforce-dangling-commas-for-multiline-statements-d034c98e36f8
+    '@stylistic/comma-dangle': ['error', 'always-multiline'], // ensures clean diffs, see https://medium.com/@nikgraf/why-you-should-enforce-dangling-commas-for-multiline-statements-d034c98e36f8
     'comma-spacing': ['error', { before: false, after: true }], // space after, no space before
     'no-multi-spaces': ['error', { ignoreEOLComments: false }], // no multi spaces
     'array-bracket-spacing': ['error', 'never'], // [1, 2, 3]
@@ -72,11 +72,8 @@ module.exports = {
     // Require all imported libraries actually resolve (!!required for import/no-extraneous-dependencies to work!!)
     'import/no-unresolved': ['error'],
 
-    // Require an ordering on all imports -- unfortunately a different ordering than TSLint used to
-    // enforce, but there are no compatible ESLint rules as far as I can tell :(
-    //
-    // WARNING for now, otherwise this will mess up all open PRs. Make it into an error after a transitionary period.
-    'import/order': ['warn', {
+    // Require an ordering on all imports
+    'import/order': ['error', {
       groups: ['builtin', 'external'],
       alphabetize: { order: 'asc', caseInsensitive: true },
     }],

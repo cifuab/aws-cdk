@@ -1,21 +1,24 @@
+/* eslint-disable import/order */
 jest.mock('child_process');
+import { bockfs } from '@aws-cdk/cdk-build-tools';
 import * as cxschema from '@aws-cdk/cloud-assembly-schema';
-import * as cdk from '@aws-cdk/core';
+import * as cdk from 'aws-cdk-lib';
 import * as semver from 'semver';
 import * as sinon from 'sinon';
 import { ImportMock } from 'ts-mock-imports';
 import { execProgram } from '../../lib/api/cxapp/exec';
-import { LogLevel, setLogLevel } from '../../lib/logging';
 import { Configuration } from '../../lib/settings';
-import * as bockfs from '../bockfs';
 import { testAssembly } from '../util';
 import { mockSpawn } from '../util/mock-child_process';
 import { MockSdkProvider } from '../util/mock-sdk';
+import { RWLock } from '../../lib/api/util/rwlock';
+import { rewriteManifestVersion } from './assembly-versions';
+import { CliIoHost } from '../../lib/toolkit/cli-io-host';
 
 let sdkProvider: MockSdkProvider;
 let config: Configuration;
 beforeEach(() => {
-  setLogLevel(LogLevel.DEBUG);
+  CliIoHost.instance().logLevel = 'debug';
 
   sdkProvider = new MockSdkProvider();
   config = new Configuration();
@@ -34,7 +37,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  setLogLevel(LogLevel.DEFAULT);
+  CliIoHost.instance().logLevel = 'info';
 
   sinon.restore();
   bockfs.restore();
@@ -74,8 +77,10 @@ test('cli throws when manifest version > schema version', async () => {
     mockVersionNumber.restore();
   }
 
+  rewriteManifestVersion('cdk.out', `${mockManifestVersion}`);
+
   const expectedError = 'This CDK CLI is not compatible with the CDK library used by your application. Please upgrade the CLI to the latest version.'
-    + `\n(Cloud assembly schema version mismatch: Maximum schema version supported is ${currentSchemaVersion}, but found ${mockManifestVersion})`;
+    + `\n(Cloud assembly schema version mismatch: Maximum schema version supported is ${semver.major(currentSchemaVersion)}.x.x, but found ${mockManifestVersion})`;
 
   config.settings.set(['app'], 'cdk.out');
 
@@ -88,18 +93,30 @@ test('cli does not throw when manifest version = schema version', async () => {
   const app = createApp();
   app.synth();
 
+  rewriteManifestVersionToOurs();
+
   config.settings.set(['app'], 'cdk.out');
 
-  await execProgram(sdkProvider, config);
+  const { lock } = await execProgram(sdkProvider, config);
+  await lock.release();
 
 }, TEN_SECOND_TIMEOUT);
 
-test('cli does not throw when manifest version < schema version', async () => {
+// Why do we have to do something here at all? Because `aws-cdk-lib` has its own version of `cloud-assembly-schema`,
+// which will have real version `38.0.0`, different from the `0.0.0` version of `cloud-assembly-schema` that the CLI
+// uses.
+//
+// Since our Cloud Assembly Schema version will be `0.0.0` and there is no such thing as `-1.0.0`, this test doesn't
+// make any sense anymore.
+// eslint-disable-next-line jest/no-disabled-tests
+test.skip('cli does not throw when manifest version < schema version', async () => {
 
   const app = createApp();
   const currentSchemaVersion = cxschema.Manifest.version();
 
   app.synth();
+
+  rewriteManifestVersionToOurs();
 
   config.settings.set(['app'], 'cdk.out');
 
@@ -107,7 +124,8 @@ test('cli does not throw when manifest version < schema version', async () => {
   // greater that the version created in the manifest, which is what we are testing for.
   const mockVersionNumber = ImportMock.mockFunction(cxschema.Manifest, 'version', semver.inc(currentSchemaVersion, 'major'));
   try {
-    await execProgram(sdkProvider, config);
+    const { lock } = await execProgram(sdkProvider, config);
+    await lock.release();
   } finally {
     mockVersionNumber.restore();
   }
@@ -126,11 +144,14 @@ test('bypasses synth when app points to a cloud assembly', async () => {
   // GIVEN
   config.settings.set(['app'], 'cdk.out');
   writeOutputAssembly();
+  rewriteManifestVersionToOurs();
 
   // WHEN
-  const cloudAssembly = await execProgram(sdkProvider, config);
+  const { assembly: cloudAssembly, lock } = await execProgram(sdkProvider, config);
   expect(cloudAssembly.artifacts).toEqual([]);
   expect(cloudAssembly.directory).toEqual('cdk.out');
+
+  await lock.release();
 });
 
 test('the application set in --app is executed', async () => {
@@ -142,7 +163,8 @@ test('the application set in --app is executed', async () => {
   });
 
   // WHEN
-  await execProgram(sdkProvider, config);
+  const { lock } = await execProgram(sdkProvider, config);
+  await lock.release();
 });
 
 test('the application set in --app is executed as-is if it contains a filename that does not exist', async () => {
@@ -154,7 +176,8 @@ test('the application set in --app is executed as-is if it contains a filename t
   });
 
   // WHEN
-  await execProgram(sdkProvider, config);
+  const { lock } = await execProgram(sdkProvider, config);
+  await lock.release();
 });
 
 test('the application set in --app is executed with arguments', async () => {
@@ -166,7 +189,8 @@ test('the application set in --app is executed with arguments', async () => {
   });
 
   // WHEN
-  await execProgram(sdkProvider, config);
+  const { lock } = await execProgram(sdkProvider, config);
+  await lock.release();
 });
 
 test('application set in --app as `*.js` always uses handler on windows', async () => {
@@ -179,7 +203,8 @@ test('application set in --app as `*.js` always uses handler on windows', async 
   });
 
   // WHEN
-  await execProgram(sdkProvider, config);
+  const { lock } = await execProgram(sdkProvider, config);
+  await lock.release();
 });
 
 test('application set in --app is `*.js` and executable', async () => {
@@ -191,7 +216,8 @@ test('application set in --app is `*.js` and executable', async () => {
   });
 
   // WHEN
-  await execProgram(sdkProvider, config);
+  const { lock } = await execProgram(sdkProvider, config);
+  await lock.release();
 });
 
 test('cli throws when the `build` script fails', async () => {
@@ -220,13 +246,46 @@ test('cli does not throw when the `build` script succeeds', async () => {
   });
 
   // WHEN
-  await execProgram(sdkProvider, config);
+  const { lock } = await execProgram(sdkProvider, config);
+  await lock.release();
 }, TEN_SECOND_TIMEOUT);
 
+test('cli releases the outdir lock when execProgram throws', async () => {
+  // GIVEN
+  config.settings.set(['app'], 'cloud-executable');
+  mockSpawn({
+    commandLine: 'fake-command',
+    exitCode: 127,
+  });
+
+  // WHEN
+  await expect(execProgram(sdkProvider, config)).rejects.toThrow();
+
+  const output = config.settings.get(['output']);
+  expect(output).toBeDefined();
+
+  // check that the lock is released
+  const lock = await new RWLock(output).acquireWrite();
+  await lock.release();
+});
 
 function writeOutputAssembly() {
   const asm = testAssembly({
     stacks: [],
   });
   bockfs.write('/home/project/cdk.out/manifest.json', JSON.stringify(asm.manifest));
+  rewriteManifestVersionToOurs(bockfs.path('/home/project/cdk.out'));
+}
+
+/**
+ * Rewrite the manifest schema version in the given directory to match the version number we expect (probably `0.0.0`).
+ *
+ * Why do we have to do this? Because `aws-cdk-lib` has its own version of `cloud-assembly-schema`,
+ * which will have real version `38.0.0`, different from the `0.0.0` version of `cloud-assembly-schema` that the CLI
+ * uses.
+ *
+ * If we don't do this, every time we load a Cloud Assembly the code will say "Maximum schema version supported is 0.x.x, but found 30.0.0".0
+ */
+function rewriteManifestVersionToOurs(dir: string = 'cdk.out') {
+  rewriteManifestVersion(dir, cxschema.Manifest.version());
 }

@@ -38,14 +38,14 @@ describe('stable versions', () => {
 
     const versionPath = path.join(process.cwd(), 'version.json');
     const version = '{\n  "version": "1.3.0"\n}';
-    expect(mockWriteFile).toBeCalledWith(expect.any(Object), versionPath, version);
+    expect(mockWriteFile).toHaveBeenCalledWith(expect.any(Object), versionPath, version);
   });
 
 });
 
 describe('alpha versions', () => {
 
-  test('for prerelease, bumps existing alpha counter as a prerelease', async () => {
+  test('long-running prerelease: bumps existing alpha counter as a prerelease', async () => {
     const currentVersion = { stableVersion: '1.2.0-rc.4', alphaVersion: '1.2.0-alpha.0' };
     const bumpedVersion = await bump({ releaseAs: 'minor', versionFile: 'version.json', prerelease: 'rc' }, currentVersion);
 
@@ -55,8 +55,18 @@ describe('alpha versions', () => {
     });
   });
 
-  test('for normal releases, bumps alpha as a prerelease of stable release', async () => {
-    const currentVersion = { stableVersion: '1.2.0', alphaVersion: '1.1.0-alpha.0' };
+  test('one-off prerelease: alpha is a prerelease of stable release with crazy alpha tag', async () => {
+    const currentVersion = { stableVersion: '1.2.0', alphaVersion: '1.2.0-alpha.0' };
+    const bumpedVersion = await bump({ releaseAs: 'minor', versionFile: 'version.json', prerelease: 'rc' }, currentVersion);
+
+    expect(bumpedVersion).toEqual({
+      stableVersion: '1.3.0-rc.0',
+      alphaVersion: '1.3.0-alpha.999',
+    });
+  });
+
+  test('normal release: alpha is a prerelease of stable release with realistic alpha tag', async () => {
+    const currentVersion = { stableVersion: '1.2.0', alphaVersion: '1.2.0-alpha.0' };
     const bumpedVersion = await bump({ releaseAs: 'minor', versionFile: 'version.json' }, currentVersion);
 
     expect(bumpedVersion).toEqual({
@@ -71,7 +81,7 @@ describe('alpha versions', () => {
 
     const versionPath = path.join(process.cwd(), 'version.json');
     const version = '{\n  "version": "1.3.0",\n  "alphaVersion": "1.3.0-alpha.0"\n}';
-    expect(mockWriteFile).toBeCalledWith(expect.any(Object), versionPath, version);
+    expect(mockWriteFile).toHaveBeenCalledWith(expect.any(Object), versionPath, version);
   });
 
 });

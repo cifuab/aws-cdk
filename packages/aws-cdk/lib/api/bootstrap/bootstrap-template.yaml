@@ -42,6 +42,20 @@ Parameters:
     Default: 'true'
     Type: 'String'
     AllowedValues: ['true', 'false']
+  InputPermissionsBoundary:
+    Description: Whether or not to use either the CDK supplied or custom permissions boundary
+    Default: ''
+    Type: 'String'
+  UseExamplePermissionsBoundary:
+    Default: 'false'
+    AllowedValues: [ 'true', 'false' ]
+    Type: String
+  BootstrapVariant:
+    Type: String
+    Default: 'AWS CDK: Default Resources'
+    Description: Describe the provenance of the resources in this bootstrap
+      stack. Change this when you customize the template. To prevent accidents,
+      the CDK CLI will not overwrite bootstrap stacks with a different variant.
 Conditions:
   HasTrustedAccounts:
     Fn::Not:
@@ -77,6 +91,15 @@ Conditions:
     Fn::Equals:
       - 'AWS_MANAGED_KEY'
       - Ref: FileAssetsBucketKmsKeyId
+  ShouldCreatePermissionsBoundary:
+    Fn::Equals:
+      - 'true'
+      - Ref: UseExamplePermissionsBoundary
+  PermissionsBoundarySet:
+    Fn::Not:
+      - Fn::Equals:
+        - ''
+        - Ref: InputPermissionsBoundary
   HasCustomContainerAssetsRepositoryName:
     Fn::Not:
       - Fn::Equals:
@@ -106,6 +129,8 @@ Resources:
               - kms:ScheduleKeyDeletion
               - kms:CancelKeyDeletion
               - kms:GenerateDataKey
+              - kms:TagResource
+              - kms:UntagResource
             Effect: Allow
             Principal:
               AWS:
@@ -180,6 +205,17 @@ Resources:
           - Ref: AWS::NoValue
       VersioningConfiguration:
         Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          # Objects will only be noncurrent if they are deleted via garbage collection.
+          - Id: CleanupOldVersions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+          - Id: AbortIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
     UpdateReplacePolicy: Retain
     DeletionPolicy: Retain
   StagingBucketPolicy:
@@ -203,6 +239,24 @@ Resources:
     Type: AWS::ECR::Repository
     Properties:
       ImageTagMutability: IMMUTABLE
+      # Untagged images should never exist but Security Hub wants this rule to exist
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Untagged images should not exist, but expire any older than one year",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 365
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
       RepositoryName:
         Fn::If:
           - HasCustomContainerAssetsRepositoryName
@@ -227,6 +281,13 @@ Resources:
     Properties:
       AssumeRolePolicyDocument:
         Statement:
+          # allows this role to be assumed with session tags.
+          # see https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html#id_session-tags_permissions-required
+          - Action: sts:TagSession
+            Effect: Allow
+            Principal:
+              AWS:
+                Ref: AWS::AccountId
           - Action: sts:AssumeRole
             Effect: Allow
             Principal:
@@ -250,6 +311,13 @@ Resources:
     Properties:
       AssumeRolePolicyDocument:
         Statement:
+          # allows this role to be assumed with session tags.
+          # see https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html#id_session-tags_permissions-required
+          - Action: sts:TagSession
+            Effect: Allow
+            Principal:
+              AWS:
+                Ref: AWS::AccountId
           - Action: sts:AssumeRole
             Effect: Allow
             Principal:
@@ -273,6 +341,13 @@ Resources:
     Properties:
       AssumeRolePolicyDocument:
         Statement:
+          # allows this role to be assumed with session tags.
+          # see https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html#id_session-tags_permissions-required
+          - Action: sts:TagSession
+            Effect: Allow
+            Principal:
+              AWS:
+                Ref: AWS::AccountId
           - Action: sts:AssumeRole
             Effect: Allow
             Principal:
@@ -327,6 +402,10 @@ Resources:
             Resource:
               - Fn::Sub: "${StagingBucket.Arn}"
               - Fn::Sub: "${StagingBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                aws:ResourceAccount:
+                  - Fn::Sub: ${AWS::AccountId}
             Effect: Allow
           - Action:
               - kms:Decrypt
@@ -377,6 +456,13 @@ Resources:
     Properties:
       AssumeRolePolicyDocument:
         Statement:
+          # allows this role to be assumed with session tags.
+          # see https://docs.aws.amazon.com/IAM/latest/UserGuide/id_session-tags.html#id_session-tags_permissions-required
+          - Action: sts:TagSession
+            Effect: Allow
+            Principal:
+              AWS:
+                Ref: AWS::AccountId
           - Action: sts:AssumeRole
             Effect: Allow
             Principal:
@@ -403,6 +489,8 @@ Resources:
                   - cloudformation:ExecuteChangeSet
                   - cloudformation:CreateStack
                   - cloudformation:UpdateStack
+                  - cloudformation:RollbackStack
+                  - cloudformation:ContinueUpdateRollback
                 Resource: "*"
               - Sid: PipelineCrossAccountArtifactsBucket
                 # Read/write buckets in different accounts. Permissions to buckets in
@@ -469,6 +557,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - ssm:GetParameter
+                  - ssm:GetParameters # CreateChangeSet uses this to evaluate any SSM parameters (like `CdkBootstrapVersion`)
                 Resource:
                   - Fn::Sub: "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${CdkBootstrapVersion}"
             Version: '2012-10-17'
@@ -500,6 +589,66 @@ Resources:
             - - Fn::Sub: "arn:${AWS::Partition}:iam::aws:policy/AdministratorAccess"
       RoleName:
         Fn::Sub: cdk-${Qualifier}-cfn-exec-role-${AWS::AccountId}-${AWS::Region}
+      PermissionsBoundary:
+        Fn::If:
+          - PermissionsBoundarySet
+          - Fn::Sub: 'arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/${InputPermissionsBoundary}'
+          - Ref: AWS::NoValue
+  CdkBoostrapPermissionsBoundaryPolicy:
+    # Edit the template prior to boostrap in order to have this example policy created
+    Condition: ShouldCreatePermissionsBoundary
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Statement:
+          # If permission boundaries do not have an explicit `allow`, then the effect is `deny`
+          - Sid: ExplicitAllowAll
+            Action:
+              - "*"
+            Effect: Allow
+            Resource: "*"
+          # Default permissions to prevent privilege escalation
+          - Sid: DenyAccessIfRequiredPermBoundaryIsNotBeingApplied
+            Action:
+              - iam:CreateUser
+              - iam:CreateRole
+              - iam:PutRolePermissionsBoundary
+              - iam:PutUserPermissionsBoundary
+            Condition:
+              StringNotEquals:
+                iam:PermissionsBoundary:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/cdk-${Qualifier}-permissions-boundary-${AWS::AccountId}-${AWS::Region}
+            Effect: Deny
+            Resource: "*"
+          # Forbid the policy itself being edited
+          - Sid: DenyPermBoundaryIAMPolicyAlteration
+            Action:
+              - iam:CreatePolicyVersion
+              - iam:DeletePolicy
+              - iam:DeletePolicyVersion
+              - iam:SetDefaultPolicyVersion
+            Effect: Deny
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/cdk-${Qualifier}-permissions-boundary-${AWS::AccountId}-${AWS::Region}
+          # Forbid removing the permissions boundary from any user or role that has it associated
+          - Sid: DenyRemovalOfPermBoundaryFromAnyUserOrRole
+            Action:
+              - iam:DeleteUserPermissionsBoundary
+              - iam:DeleteRolePermissionsBoundary
+            Effect: Deny
+            Resource: "*"
+          # Add your specific organizational security policy here
+          # Uncomment the example to deny access to AWS Config
+          #- Sid: OrganizationalSecurityPolicy
+          #  Action:
+          #    - "config:*"
+          #  Effect: Deny
+          #  Resource: "*"
+        Version: "2012-10-17"
+      Description: "Bootstrap Permission Boundary"
+      ManagedPolicyName:
+        Fn::Sub: cdk-${Qualifier}-permissions-boundary-${AWS::AccountId}-${AWS::Region}
+      Path: /
   # The SSM parameter is used in pipeline-deployed templates to verify the version
   # of the bootstrap resources.
   CdkBootstrapVersion:
@@ -508,7 +657,7 @@ Resources:
       Type: String
       Name:
         Fn::Sub: '/cdk-bootstrap/${Qualifier}/version'
-      Value: '14'
+      Value: '25'
 Outputs:
   BucketName:
     Description: The name of the S3 bucket owned by the CDK toolkit stack

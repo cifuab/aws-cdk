@@ -1,8 +1,8 @@
 import * as workerpool from 'workerpool';
+import { printSummary, printResults, IntegTestWorkerConfig, SnapshotVerificationOptions, printLaggards } from './common';
 import * as logger from '../logger';
 import { IntegTest } from '../runner/integration-tests';
 import { flatten, WorkList } from '../utils';
-import { printSummary, printResults, IntegTestWorkerConfig, SnapshotVerificationOptions, printLaggards } from './common';
 
 /**
  * Run Snapshot tests
@@ -20,6 +20,8 @@ export async function runSnapshotTests(
     onTimeout: printLaggards,
   });
 
+  // The worker pool is already limited
+  // eslint-disable-next-line @cdklabs/promiseall-no-unbounded-parallelism
   const failedTests: IntegTestWorkerConfig[][] = await Promise.all(
     tests.map((test) => pool.exec('snapshotTestWorker', [test.info /* Dehydrate class -> data */, options], {
       on: (x) => {
